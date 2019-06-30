@@ -61,7 +61,7 @@ Notation: image $`I`$ with channels $`c\in C`$, set of patches $`P`$ (per channe
 
 Computes the discrete Shannon entropy over individual pixel values across the image, written
 ```math
-\mathcal{H}_{d,v}(I) = \frac{-1}{|C|} \sum_{c\in C} \sum_{v\in V_c} p(v) \log p(v)
+\mathcal{H}_{d,v}(I) = \frac{-1}{|C|} \sum_{c\in C} \sum_{s\in V_c} p(s) \log p(s)
 ```
 
 ### Average local pixel-wise entropies
@@ -73,7 +73,15 @@ Computes the mean discrete Shannon entropy within local image patches, via
 
 ### Frequency-weighted mean Fourier coefficient
 
-Computes the weighted average of the Fourier coefficient values, with weights based on the associated frequency value.
+Computes the weighted average of the Fourier coefficient values, with weights based on the associated frequency value, such that
+```math
+\mathcal{F}_w(I) = \frac{1}{Z_\gamma} \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y) \mathcal{I}_F(\psi_x,\psi_y),
+\;\text{ where}\;
+\mathcal{I}_F = \frac{1}{|C|}\sum_{c\in C} \log \left| \mathfrak{F}[c] \right|
+\;\text{and}\; 
+Z_\gamma = \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y),
+```
+denoting $`\mathfrak{F}[c]`$ as the Fourier transform of the single-channel image $`c`$, $`\Psi`$ as the set of frequency space coordinates, and $`\gamma(x,y) = |x| + |y|`$ as Manhatten distance weights.
 
 ### Average local patch covariances
 
@@ -86,7 +94,7 @@ Estimates the mean local intra-patch covariance over the image, written
 
 Computes the mean value of the per-channel gradient magnitude over the image; i.e., 
 ```math
-\mathcal{G}(I) = \frac{1}{|C|\,|V_c|} \sum_{c\in C} \sum_{v\in V_c} ||\nabla I(v)||_2
+\mathcal{G}(I) = \frac{1}{|C|\,|V_c|} \sum_{c\in C} \sum_{s\in V_c} ||\nabla I(s)||_2
 ```
 
 ### Pixel-wise differential entropy
@@ -120,5 +128,5 @@ It implements the approach in Kraskov et al, 2004, *Estimating Mutual Informatio
 
 ## TODO
 
-- Better modularization and name-spacing, code redundancy, and computation sharing
+- Better modularization and name-spacing, code redundancy, and efficiency/computation sharing
 - Measures looking at the distribution of pairwise distances (L2, Wasserstein, etc...) between patches over the image
