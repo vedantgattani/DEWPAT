@@ -1,6 +1,7 @@
 # Img-Complexity
 
-This repo contains implementations of several simple measures of image complexity. 
+This repo contains implementations of several simple measures of image complexity,
+including ones based on frequency content, information entropy, and .
 
 ## Requirements: 
 
@@ -50,7 +51,7 @@ Computes the mean local patch covariance over the image via
 ```math
 \mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\det\left(\widehat{C}(p)\right)
 ```
-where $P$ is the set of patches, $p\in\mathbb{R}^{S_P \times 3}$ is the set of pixel values per patch, and $\widehat{C}$ is the empirical covariance matrix.
+where $`P`$ is the set of patches, $`p\in\mathbb{R}^{S_P \times 3}`$ is the set of pixel values per patch, and $`\widehat{C}`$ is the empirical covariance matrix.
 
 ### Average Gradient Magnitude
 
