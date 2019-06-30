@@ -31,6 +31,12 @@ $`I_G=||\nabla I||_2`$ of that input (or both).
 
 Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
 
+#### Alpha Channel Masking
+
+Most measures are able to account for the presence of an alpha channel mask. 
+For instance, in most patch-based estimators, any patch with a masked pixel is ignored. 
+The alpha channel can be ignored with the flag `--ignore_alpha`.
+
 ## Complexity Measures
 
 ### Pixel-wise discrete entropy
@@ -57,14 +63,22 @@ where $`P`$ is the set of patches, $`p\in\mathbb{R}^{S_P \times 3}`$ is the set 
 
 Computes the mean value of the per-channel gradient magnitude over the image.
 
-### Global Patch Covariance
+### Pixel-wise differential entropy
+
+Computes the differential Shannon entropy of the continuous-space vector-valued pixel distribution of the image.
+
+### Patch-wise global differential entropy
+
+Computes the differential entropy of the distribution of patches over the images, where each multi-channel patch is unfolded into a single continuous vector.
+
+### Global patch covariance
 
 
 ## Acknowledgements
 
-The global patch-based entropy measure utilizes the *Non-parametric Entropy Estimation Toolbox* by Greg Ver Steeg. 
+The differential entropy measures utilize the *Non-parametric Entropy Estimation Toolbox* by Greg Ver Steeg. 
 See the [**NPEET** Github Repo](https://github.com/gregversteeg/NPEET) (MIT licensed).
-It implements the approach by Kraskov et al, 2004, *Estimating Mutual Information*.
+It implements the approach in Kraskov et al, 2004, *Estimating Mutual Information*.
 
 
 ## TODO

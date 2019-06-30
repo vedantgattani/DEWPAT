@@ -5,7 +5,7 @@ from skimage.morphology import disk
 from skimage.util import view_as_windows
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from skimage import filters
-import entropy_estimators as EE 
+import entropy_estimators as EE_cont 
 from scipy.stats import entropy as scipy_discrete_shannon_entropy 
 
 
@@ -31,20 +31,33 @@ group_c = parser.add_argument_group('Complexities Arguments',
                          'By default, computes all complexity measures; ' + 
                          'if any specific ones are given, only those are used.') )
 group_c.add_argument('--discrete_global_shannon',   
-        dest='discrete_global_shannon', action='store_const', const=0, default=None,
+        dest='discrete_global_shannon', action='store_const', 
+        const=0, default=None,
         help='Whether to use the discrete pixel-wise global Shannon entropy measure')
 group_c.add_argument('--discrete_local_shannon',    
-        dest='discrete_local_shannon', action='store_const', const=1, default=None,
+        dest='discrete_local_shannon', action='store_const', 
+        const=1, default=None,
         help='Whether to use the discrete Shannon entropy across image patches measure')
 group_c.add_argument('--weighted_fourier',          
-        dest='weighted_fourier', action='store_const', const=2, default=None,
+        dest='weighted_fourier', action='store_const', 
+        const=2, default=None,
         help='Whether to use the frequency-weighted mean Fourier coefficient measure')
 group_c.add_argument('--local_covars',              
-        dest='local_covars', action='store_const', const=3, default=None,
+        dest='local_covars', action='store_const', 
+        const=3, default=None,
         help='Whether to use the average log-determinant of covariances across image patches')
 group_c.add_argument('--grad_mag',                  
-        dest='grad_mag', action='store_const', const=4, default=None,
+        dest='grad_mag', action='store_const', 
+        const=4, default=None,
         help='Whether to use the mean gradient magnitude over the image')
+group_c.add_argument('--diff_shannon_entropy',                  
+        dest='diff_shannon_entropy', action='store_const', 
+        const=5, default=None,
+        help='Whether to use the differential Shannon entropy computed over continuous-valued image pixels')
+group_c.add_argument('--diff_shannon_entropy_patches',                  
+        dest='diff_shannon_entropy_patches', action='store_const', 
+        const=6, default=None,
+        help='Whether to use the differential Shannon entropy computed over continuous-valued image patches')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -80,10 +93,11 @@ args = parser.parse_args()
 # Names of complexity measures
 S_all = [ 'Pixelwise Shannon entropy', 'Average local entropies',
           'Frequency-weighted mean coefficient', 'Local patch covariance',
-          'Average gradient magnitude']
+          'Average gradient magnitude', 'Pixelwise Differential Entropy',
+          'Patchwise Differential Entropy']
 # Discern which measures to use
 input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, args.weighted_fourier,
-               args.local_covars, args.grad_mag ]
+               args.local_covars, args.grad_mag, args.diff_shannon_entropy, args.diff_shannon_entropy_patches ]
 if all(map(lambda k: k is None, input_vals)):
     if args.verbose: print('Using all complexity measures')
     S = S_all
@@ -96,10 +110,11 @@ complexities_to_use = [ val for val in input_vals if not val is None ]
 
 #------------------------------------------------------------------------------#
 
-def generate_gradient_magnitude_image(img, divider=2.0, to_ubyte=False):
+def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
     '''
     Generates the per-channel L2 gradient magnitude image of the input `img`.
-    Each edge pixel value is divided by `divider`.
+    Each edge pixel value is divided by `divider` (enforce output in [0,1] + numerical stability).
+    If `to_ubyte` is specified True, the output is converted to the ubyte numpy dtype.
     '''
     @adapt_rgb(each_channel)
     def cgrad_x(img):
@@ -110,6 +125,7 @@ def generate_gradient_magnitude_image(img, divider=2.0, to_ubyte=False):
     Ig_x, Ig_y = cgrad_x(img), cgrad_y(img)
     Ig_x_sq, Ig_y_sq = Ig_x * Ig_x, Ig_y * Ig_y
     gradient_img = np.sqrt(Ig_x_sq + Ig_y_sq) / divider # to remain in [0,1]
+    print('GradImg min/max: %.2f/%.2f' % (gradient_img.min(), gradient_img.max()))
     if to_ubyte:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -119,9 +135,15 @@ def generate_gradient_magnitude_image(img, divider=2.0, to_ubyte=False):
 def compute_complexities(impath,    # Path to input image file
         complexities_to_use,        # List of ints describing which complexity metric to apply
         to_print=False,             # Switch between multi-image CSV mode and single-image printing mode
+        # Measure parameters
         local_entropy_disk_size=24, # Patch size for local entropy calculations
         local_patch_size=16,        # Patch size for local covariance calculations
         wstep=2,                    # The step-size (stride) for the local covariance calculation
+        transform_diff_ent=True,    # Whether to transform the differential entropy
+        affine_param=150,           # Parameter used in affine transform for differential entropy
+        diff_ent_patch_size=3,      # Size of patch to unfold for differential entropy calculations
+        diff_ent_window_step=2,     # Patch extraction step size for differential entropy computations
+        # Visualization Options
         use_gradient_image=False,   # Whether to use channel-wise gradient image instead of the raw input
         show_fourier_image = False, # Whether to display Fourier-based images
         show_locent_image = False,  # Whether to display the local entropies
@@ -155,6 +177,8 @@ def compute_complexities(impath,    # Path to input image file
         imm = ax.imshow(inim) if cmap is None else ax.imshow(inim, cmap=cmap)
         plt.title(title)
         if colorbar: fig.colorbar(imm)
+    # Helper for single parameter affine transform
+    _oneparam_affine = lambda x: (x + affine_param) / affine_param
     # Read original image
     if verbose: print('Reading image:', impath)
     img = skimage.io.imread(impath)
@@ -275,7 +299,7 @@ def compute_complexities(impath,    # Path to input image file
                                     (local_patch_size, local_patch_size), step=wstep) # H x W x Px x Py
             def masked_detcov(i,j):
                 mask_patch = alpha_over_patches[i,j,:,:]
-                if 0 in mask_patch: return 0
+                if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
                 unfolded_patch = patches[:,i,j,:,:].reshape(wt, 3).T
                 return np.linalg.det(np.cov( unfolded_patch ))
             covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
@@ -292,6 +316,7 @@ def compute_complexities(impath,    # Path to input image file
     # Note: this computes the second-order derivatives if we're using a gradient image
     # Note: even if we mask the gradient image, the gradient on the boundary will still be high
     if 4 in complexities_to_use:
+        if verbose: print('Computing average edginess')
         grad_img = generate_gradient_magnitude_image(img)
         if show_gradient_img:
             gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
@@ -300,6 +325,53 @@ def compute_complexities(impath,    # Path to input image file
             grad_img[alpha_mask <= 0] = 0
         average_edginess = np.mean(grad_img)
         add_new(average_edginess, 4)
+
+    #>> Measure 5: Continuous-space Differential Shannon entropy across pixels
+    if 5 in complexities_to_use:
+        if verbose: print('Computing continuous pixel-wise differential entropy')
+        float_img = skimage.img_as_float(img).reshape(h * w, 3) # list of pixel values
+        if using_alpha_mask:
+            unfolded_mask = alpha_mask.reshape(h * w)
+            _str_tmp = "\tMask Sum: " + str(unfolded_mask.sum()) + ", Orig Shape: " + str(float_img.shape)
+            float_img = float_img[ unfolded_mask > 0 ]
+            _str_tmp += ", Masked Shape: " + str(float_img.shape)
+            if verbose: print(_str_tmp)
+        # Compute nearest neighbour-based density estimator
+        pixelwise_diff_entropy = EE_cont.entropy(float_img, base=np.e)
+        if transform_diff_ent: pixelwise_diff_entropy = _oneparam_affine(pixelwise_diff_entropy)
+        add_new(pixelwise_diff_entropy, 5)
+
+    #>> Measure 6: Continuous-space Differential Shannon entropy per pixels
+    # Note: this measure is not invariant to rotations of patches
+    if 6 in complexities_to_use:
+        if verbose: print('Computing continuous patch-wise differential entropy')
+        # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
+        float_img = skimage.img_as_float(img)
+        patches = np.array([ view_as_windows(np.ascontiguousarray(float_img[:,:,k]),
+                                             (diff_ent_patch_size, diff_ent_patch_size), 
+                                             step=diff_ent_window_step) 
+                            for k in range(3) ])
+        if verbose: print('\tPatch windows size:', patches.shape)
+        ps, wt = patches.shape, diff_ent_patch_size**2
+        # Gathers unfolded patches across the image
+        if using_alpha_mask:
+            alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
+                                    (diff_ent_patch_size, diff_ent_patch_size), 
+                                    step=diff_ent_window_step) # H x W x Px x Py
+            def vectorize_patch(i,j):
+                mask_patch = alpha_over_patches[i,j,:,:]
+                if 0 in mask_patch: return None
+                unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
+                return unfolded_patch
+            patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
+            patch_vectors = np.array([vp for vp in patch_vectors if not vp is None])
+        else:
+            patch_vectors = np.array([ patches[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+        if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
+        # Compute nearest neighbour-based density estimator
+        patchwise_diff_entropy = EE_cont.entropy(patch_vectors, base=np.e)
+        if transform_diff_ent: patchwise_diff_entropy = _oneparam_affine(patchwise_diff_entropy)
+        add_new(patchwise_diff_entropy, 6)
 
     ### </ Finished computing complexity measures /> ###
 
