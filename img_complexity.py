@@ -58,6 +58,10 @@ group_c.add_argument('--diff_shannon_entropy_patches',
         dest='diff_shannon_entropy_patches', action='store_const', 
         const=6, default=None,
         help='Whether to use the differential Shannon entropy computed over continuous-valued image patches')
+group_c.add_argument('--global_patch_covar',                  
+        dest='global_patch_covar', action='store_const', 
+        const=7, default=None,
+        help='Whether to use the global patch-wise log-determinant of the covariance of unfolded patches across the image')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -91,13 +95,14 @@ group_g.add_argument('--use_grad_too',
 args = parser.parse_args()
 
 # Names of complexity measures
-S_all = [ 'Pixelwise Shannon entropy', 'Average local entropies',
-          'Frequency-weighted mean coefficient', 'Local patch covariance',
-          'Average gradient magnitude', 'Pixelwise Differential Entropy',
-          'Patchwise Differential Entropy']
+S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
+          'Frequency-weighted Mean Coefficient', 'Local Patch Covariance',
+          'Average Gradient Magnitude', 'Pixelwise Differential Entropy',
+          'Patchwise Differential Entropy', 'Global Patch Covariance']
 # Discern which measures to use
 input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, args.weighted_fourier,
-               args.local_covars, args.grad_mag, args.diff_shannon_entropy, args.diff_shannon_entropy_patches ]
+               args.local_covars, args.grad_mag, args.diff_shannon_entropy, args.diff_shannon_entropy_patches,
+               args.global_patch_covar ]
 if all(map(lambda k: k is None, input_vals)):
     if args.verbose: print('Using all complexity measures')
     S = S_all
@@ -125,7 +130,7 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
     Ig_x, Ig_y = cgrad_x(img), cgrad_y(img)
     Ig_x_sq, Ig_y_sq = Ig_x * Ig_x, Ig_y * Ig_y
     gradient_img = np.sqrt(Ig_x_sq + Ig_y_sq) / divider # to remain in [0,1]
-    print('GradImg min/max: %.2f/%.2f' % (gradient_img.min(), gradient_img.max()))
+    # print('GradImg min/max: %.2f/%.2f' % (gradient_img.min(), gradient_img.max()))
     if to_ubyte:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -135,15 +140,20 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
 def compute_complexities(impath,    # Path to input image file
         complexities_to_use,        # List of ints describing which complexity metric to apply
         to_print=False,             # Switch between multi-image CSV mode and single-image printing mode
-        # Measure parameters
+        ### Measure parameters ###
         local_entropy_disk_size=24, # Patch size for local entropy calculations
         local_patch_size=16,        # Patch size for local covariance calculations
         wstep=2,                    # The step-size (stride) for the local covariance calculation
-        transform_diff_ent=True,    # Whether to transform the differential entropy
+        transform_diff_ent=True,    # Whether to affinely transform the differential entropy
         affine_param=150,           # Parameter used in affine transform for differential entropy
         diff_ent_patch_size=3,      # Size of patch to unfold for differential entropy calculations
-        diff_ent_window_step=2,     # Patch extraction step size for differential entropy computations
-        # Visualization Options
+        diff_ent_window_step=2,     # Patch extraction step size for differential entropy estimation
+        global_cov_window_size=5,   # Size of patch for global patch covariances 
+        global_cov_window_step=2,   # Patch extraction step size for global patch covariance computations
+        global_cov_norm_img=False,  # Whether to normalize the image into [0,1] before computing global covariances
+        global_cov_aff_trans=True,  # Whether to affinely transform the output logdet covariances
+        global_cov_affine_prm=100,  # Parameter used in affine transform for global patch-wise logdet covariances
+        ### Visualization Options ###
         use_gradient_image=False,   # Whether to use channel-wise gradient image instead of the raw input
         show_fourier_image = False, # Whether to display Fourier-based images
         show_locent_image = False,  # Whether to display the local entropies
@@ -160,6 +170,10 @@ def compute_complexities(impath,    # Path to input image file
         magnitude image of the original image, as if it were the input. The average
         gradient measure in this case, is actually the second-order gradient
         of the original image. This applies when show_gradient_img is True as well.
+
+    The affine parameters for the patch-wise differential entropy and covariance control an order-preserving (monotonic)
+        transform for the final output. This is simply for aesthetics, to make the values positive and of smaller magnitude.
+        This can be turned off via `transform_diff_ent` and `global_cov_aff_trans`.
 
     Notes:
         These measures still take the background pixels into account.
@@ -178,7 +192,7 @@ def compute_complexities(impath,    # Path to input image file
         plt.title(title)
         if colorbar: fig.colorbar(imm)
     # Helper for single parameter affine transform
-    _oneparam_affine = lambda x: (x + affine_param) / affine_param
+    _oneparam_affine = lambda x, affp: (x + affp) / affp
     # Read original image
     if verbose: print('Reading image:', impath)
     img = skimage.io.imread(impath)
@@ -338,10 +352,10 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print(_str_tmp)
         # Compute nearest neighbour-based density estimator
         pixelwise_diff_entropy = EE_cont.entropy(float_img, base=np.e)
-        if transform_diff_ent: pixelwise_diff_entropy = _oneparam_affine(pixelwise_diff_entropy)
+        if transform_diff_ent: pixelwise_diff_entropy = _oneparam_affine(pixelwise_diff_entropy, affine_param)
         add_new(pixelwise_diff_entropy, 5)
 
-    #>> Measure 6: Continuous-space Differential Shannon entropy per pixels
+    #>> Measure 6: Continuous-space Differential Shannon entropy over patches
     # Note: this measure is not invariant to rotations of patches
     if 6 in complexities_to_use:
         if verbose: print('Computing continuous patch-wise differential entropy')
@@ -370,8 +384,46 @@ def compute_complexities(impath,    # Path to input image file
         if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
         # Compute nearest neighbour-based density estimator
         patchwise_diff_entropy = EE_cont.entropy(patch_vectors, base=np.e)
-        if transform_diff_ent: patchwise_diff_entropy = _oneparam_affine(patchwise_diff_entropy)
+        if transform_diff_ent: patchwise_diff_entropy = _oneparam_affine(patchwise_diff_entropy, affine_param)
         add_new(patchwise_diff_entropy, 6)
+
+    #> Measure 7: Global patch-wise covariance logdet
+    # Note: this measure is also sensitive to patch orientation (e.g., rotating a patch will affect it)
+    if 7 in complexities_to_use:
+        if verbose: print('Computing global patch-wise covariance')
+        # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
+        # TODO merge the patch extractor code here with the one just above to reduce reduandancy
+        float_img = skimage.img_as_float(img) if global_cov_norm_img else img
+        patches = np.array([ view_as_windows(np.ascontiguousarray(float_img[:,:,k]),
+                                             (global_cov_window_size, global_cov_window_size), 
+                                             step=global_cov_window_step) 
+                            for k in range(3) ])
+        if verbose: print('\tPatch windows size:', patches.shape)
+        ps, wt = patches.shape, global_cov_window_size**2
+        # Gathers unfolded patches across the image
+        if using_alpha_mask:
+            alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
+                                    (global_cov_window_size, global_cov_window_size), 
+                                    step=global_cov_window_step) # H x W x Px x Py
+            def vectorize_patch(i,j):
+                mask_patch = alpha_over_patches[i,j,:,:]
+                if 0 in mask_patch: return None
+                unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
+                return unfolded_patch
+            patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
+            patch_vectors = np.array([vp for vp in patch_vectors if not vp is None])
+        else:
+            patch_vectors = np.array([ patches[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+        if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
+        # Compute covariance matrix of the unfolded vectors
+        # _num_pert = 1.0
+        global_cov = np.cov( patch_vectors.T )
+        # print('PV', patch_vectors[0:3, :])
+        # print('COV', global_cov.shape)
+        sign, patchwise_covar_logdet = np.linalg.slogdet(global_cov) # np.log( np.linalg.det(global_cov) + _num_pert )
+        if global_cov_aff_trans: patchwise_covar_logdet = _oneparam_affine(patchwise_covar_logdet, global_cov_affine_prm)
+        # print('pc', patchwise_covar_logdet)
+        add_new(patchwise_covar_logdet, 7)
 
     ### </ Finished computing complexity measures /> ###
 

@@ -37,6 +37,20 @@ Most measures are able to account for the presence of an alpha channel mask.
 For instance, in most patch-based estimators, any patch with a masked pixel is ignored. 
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
+#### Examples
+
+- Compute all the complexity measures for a single input image, as well as visualizing the contributions of each pixel for the local pixelwise entropy measure:
+
+  `python img_complexity.py eg.png --show_local_covars`
+
+- Compute only the patch-wise differential entropy measure and the weighed Fourier measure, on both the input image and its gradient image, for every image in the input folder:
+
+  `python img_complexity.py eg_folder --diff_shannon_entropy_patches --weighted_fourier --use_grad_too`
+
+- List all command flags and options of the script, along with descriptions of each:
+
+  `python img_complexity.py --help `
+
 ## Complexity Measures
 
 We briefly provide a basic description of the measures. 
@@ -63,9 +77,9 @@ Computes the weighted average of the Fourier coefficient values, with weights ba
 
 ### Average local patch covariances
 
-Computes the mean local intra-patch covariance over the image, written 
+Estimates the mean local intra-patch covariance over the image, written 
 ```math
-\mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\det\left(\widehat{C}(p)\right)
+\mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\left( \det\left(\widehat{C}(p)\right) + 1 \right)
 ```
 
 ### Average Gradient Magnitude
@@ -77,7 +91,7 @@ Computes the mean value of the per-channel gradient magnitude over the image; i.
 
 ### Pixel-wise differential entropy
 
-Computes the differential Shannon entropy of the continuous-space vector-valued pixel distribution of the image.
+Estimates the differential Shannon entropy of the continuous-space vector-valued pixel distribution of the image.
 This can be written
 ```math
 \mathcal{H}_{c,v}(I) = -\int_V p(v) \log p(v)\, dv
@@ -85,13 +99,17 @@ This can be written
 
 ### Patch-wise global differential entropy
 
-Computes the differential entropy of the distribution of patches over the images, where each multi-channel patch is unfolded into a single continuous vector.
-This can be written
+Estimates the differential entropy of the distribution of patches over the images, where each multi-channel patch is unfolded into a single continuous vector, written
 ```math
 \mathcal{H}_{c,p}(I) = -\int_P p(\xi) \log p(\xi)\, d\xi
 ```
 
 ### Global patch covariance
+
+Computes the log-determinant of the global covariance matrix over patches in the image, where again each multi-channel patch is unfolded into a single vector; i.e.,
+```math
+\mathcal{C}_{G}(I) = \log\left( \det\left( \widehat{C}(P) \right) \right)
+```
 
 
 ## Acknowledgements
@@ -100,3 +118,7 @@ The differential entropy measures utilize the *Non-parametric Entropy Estimation
 See the [**NPEET** Github Repo](https://github.com/gregversteeg/NPEET) (MIT licensed).
 It implements the approach in Kraskov et al, 2004, *Estimating Mutual Information*.
 
+## TODO
+
+- Better modularization and name-spacing, code redundancy, and computation sharing
+- Measures looking at the distribution of pairwise distances (L2, Wasserstein, etc...) between patches over the image
