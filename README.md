@@ -34,7 +34,7 @@ Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute 
 #### Alpha Channel Masking
 
 Most measures are able to account for the presence of an alpha channel mask. 
-For instance, in most patch-based estimators, any patch with a masked pixel is ignored. 
+For instance, in the patch-based estimators, any patch with a masked pixel is ignored. 
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
 #### Examples
@@ -54,6 +54,7 @@ The alpha channel can be ignored with the flag `--ignore_alpha`.
 ## Complexity Measures
 
 We briefly provide a basic description of the measures. 
+They may be slightly altered (e.g., monotonically transformed or scaled) to give more aesthetically pleasing values.
 See the code for precise computational details.
 Notation: image $`I`$ with channels $`c\in C`$, set of patches $`P`$ (per channel, $`P_c`$), set of pixels $`V`$ (per channel, $`V_c`$), and empirical covariance matrix $`\widehat{C}`$.
 
@@ -130,3 +131,4 @@ It implements the approach in Kraskov et al, 2004, *Estimating Mutual Informatio
 
 - Better modularization and name-spacing, code redundancy, and efficiency/computation sharing
 - Measures looking at the distribution of pairwise distances (L2, Wasserstein, etc...) between patches over the image
+- Parameters such as patch sizes are only accessible within the script itself.

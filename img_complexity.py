@@ -8,7 +8,6 @@ from skimage import filters
 import entropy_estimators as EE_cont 
 from scipy.stats import entropy as scipy_discrete_shannon_entropy 
 
-
 '''
 Usage: python img_complexity.py <input>
     where input is either a folder of images or a single image.
@@ -246,10 +245,7 @@ def compute_complexities(impath,    # Path to input image file
                 _fake_pixel_val = -1000
                 channel[ alpha_mask <= 0 ] = _fake_pixel_val
                 unique_vals, counts = np.unique(channel, return_counts=True)
-                # print('Vals\n', unique_vals)
-                # print('Counts\n', counts)
                 new_counts = [ c for ii, c in enumerate(counts) if not unique_vals[ii] == _fake_pixel_val ]
-                # print('New Counts\n', new_counts)
                 return scipy_discrete_shannon_entropy(new_counts, base=np.e)
             shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i]) for i in range(3)])
         else:
@@ -284,7 +280,7 @@ def compute_complexities(impath,    # Path to input image file
                                             for shifted_fourier_image in shifted_fourier_images
                                         ]).transpose((1,2,0)) # Same shape as input
         avg_fourier_image = np.mean(shifted_fourier_logmag_image, axis=2)
-        # Manhatten weighting from center
+        # Manhattan weighting from center
         index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
                             for j in range(0,w)] for i in range(0,h)])
         # Normalize weights into [0,1]. Note this doesn't matter because of the later sum normalization.
@@ -417,22 +413,15 @@ def compute_complexities(impath,    # Path to input image file
             patch_vectors = np.array([ patches[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
         if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
         # Compute covariance matrix of the unfolded vectors
-        # _num_pert = 1.0
         global_cov = np.cov( patch_vectors.T )
-        # print('PV', patch_vectors[0:3, :])
-        # print('COV', global_cov.shape)
-        sign, patchwise_covar_logdet = np.linalg.slogdet(global_cov) # np.log( np.linalg.det(global_cov) + _num_pert )
+        sign, patchwise_covar_logdet = np.linalg.slogdet(global_cov) 
         if global_cov_aff_trans: patchwise_covar_logdet = _oneparam_affine(patchwise_covar_logdet, global_cov_affine_prm)
-        # print('pc', patchwise_covar_logdet)
         add_new(patchwise_covar_logdet, 7)
 
     ### </ Finished computing complexity measures /> ###
 
     # Minor checks
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
-
-    # Overall complexities
-    #complexities = [shannon_entropy, local_entropy, fourier_weighted_mean_coef, local_covar, average_edginess]
 
     # Show images if needed
     if show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img:
