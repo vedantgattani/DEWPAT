@@ -10,37 +10,85 @@ import entropy_estimators as EE
 '''
 Usage: python img_complexity.py <input>
     where input is either a folder of images or a single image.
+By default, computes all complexity measures; if any specific ones are given, only those are used.
 Note: operates in RGB color space.
 '''
 
-parser = argparse.ArgumentParser(description='Computes some simple measure of image complexity')
+overall_desc = 'Computes some simple measure of image complexity.'
+parser = argparse.ArgumentParser(description=overall_desc)
+# Input image
 parser.add_argument('input', type=str, help='Input: either a folder or an image')
+# Meta-arguments
 parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
-# Gradient image usage
-parser.add_argument('--use_grad_only', dest='use_grad', action='store_true',
-        help='Whether to use the gradient of the image instead of the image itself')
-parser.add_argument('--use_grad_too', dest='use_grad_too', action='store_true',
-        help='If specified, computes complexities of both original and gradient image')
+# Specifying complexity measures to use
+group_c = parser.add_argument_group('Complexities Arguments',
+            description=('Controls which complexity measures to utilize. ' + 
+                         'By default, computes all complexity measures; ' + 
+                         'if any specific ones are given, only those are used.') )
+group_c.add_argument('--discrete_global_shannon',   
+        dest='discrete_global_shannon', action='store_const', const=0, default=None,
+        help='Whether to use the discrete pixel-wise global Shannon entropy measure')
+group_c.add_argument('--discrete_local_shannon',    
+        dest='discrete_local_shannon', action='store_const', const=1, default=None,
+        help='Whether to use the discrete Shannon entropy across image patches measure')
+group_c.add_argument('--weighted_fourier',          
+        dest='weighted_fourier', action='store_const', const=2, default=None,
+        help='Whether to use the frequency-weighted mean Fourier coefficient measure')
+group_c.add_argument('--local_covars',              
+        dest='local_covars', action='store_const', const=3, default=None,
+        help='Whether to use the average log-determinant of covariances across image patches')
+group_c.add_argument('--grad_mag',                  
+        dest='grad_mag', action='store_const', const=4, default=None,
+        help='Whether to use the mean gradient magnitude over the image')
 # Display options
-parser.add_argument('--show_fourier', dest='show_fourier', action='store_true',
+group_v = parser.add_argument_group('Visualization Arguments',
+            description='Options for viewing intermediate computations.')
+group_v.add_argument('--show_fourier',      
+        dest='show_fourier', action='store_true',
         help='Whether to display the Fourier transformed and weighted image')
-parser.add_argument('--show_local_ents', dest='show_locents', action='store_true',
+group_v.add_argument('--show_local_ents',   
+        dest='show_locents', action='store_true',
         help='Whether to display the image of local entropies')
-parser.add_argument('--show_local_covars', dest='show_local_covars', action='store_true',
+group_v.add_argument('--show_local_covars', 
+        dest='show_local_covars', action='store_true',
         help='Whether to display an image of the local covariances')
-parser.add_argument('--show_gradient_img', dest='show_gradient_img', action='store_true',
+group_v.add_argument('--show_gradient_img', 
+        dest='show_gradient_img', action='store_true',
         help='Whether to display the gradient magnitude image')
-parser.add_argument('--show_img', dest='show_img', action='store_true',
+group_v.add_argument('--show_img',          
+        dest='show_img', action='store_true',
         help='Whether to display the input image')
-parser.add_argument('--show_all', dest='show_all', action='store_true',
+group_v.add_argument('--show_all',          
+        dest='show_all', action='store_true',
         help='Whether to display all of the above images')
+# Gradient image usage
+group_g = parser.add_argument_group('Gradient Image Input Arguments')
+group_g.add_argument('--use_grad_only',     
+        dest='use_grad', action='store_true',
+        help='Whether to use the gradient of the image instead of the image itself')
+group_g.add_argument('--use_grad_too',      
+        dest='use_grad_too', action='store_true',
+        help='If specified, computes complexities of both the original and the gradient image')
+#> Final parsing <#
 args = parser.parse_args()
 
 # Names of complexity measures
-S = ['Image path', 'Pixelwise Shannon entropy', 'Average local entropies',
-     'Frequency-weighted mean coefficient', 'Local patch covariance',
-     'Average gradient magnitude']
+S_all = [ 'Pixelwise Shannon entropy', 'Average local entropies',
+          'Frequency-weighted mean coefficient', 'Local patch covariance',
+          'Average gradient magnitude']
+# Discern which measures to use
+input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, args.weighted_fourier,
+               args.local_covars, args.grad_mag ]
+if all(map(lambda k: k is None, input_vals)):
+    if args.verbose: print('Using all complexity measures')
+    S = S_all
+    input_vals = list(range(len(input_vals)))
+else:
+    S = [ S_all[i] for i in range(len(input_vals)) if i in input_vals ]
+    if args.verbose: print('Using:', ", ".join(S))
+S = ['Image path'] + S
+complexities_to_use = [ val for val in input_vals if not val is None ]
 
 #------------------------------------------------------------------------------#
 
@@ -61,6 +109,7 @@ def generate_gradient_magnitude_image(img, divider=2.0):
     return gradient_img
 
 def compute_complexities(impath,
+        complexities_to_use,        
         to_print=False,
         local_entropy_disk_size=24, # Patch size for local entropy calculations
         local_patch_size=30,        # Patch size for local covariance calculations
@@ -119,65 +168,85 @@ def compute_complexities(impath,
     ### Computing complexity measures ###
     #####################################
 
-    #>> Channel-wise entropy in nats over pixels
-    if verbose: print('Computing image entropy')
-    shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i],base=np.e) for i in range(3)])
+    complexities, computed_names = [], []
+    def add_new(val, ind):
+        complexities.append(val)
+        computed_names.append(S_all[ind])
 
-    #>> Averaged channel-wise local entropy
-    if verbose: print('Computing local entropies')
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        le_img = np.array([ skimage.filters.rank.entropy(img[:,:,i], disk(local_entropy_disk_size))
-                    for i in range(3) ]).mean(axis=0)
-    if show_locent_image: imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma')
-    local_entropy = np.mean(le_img)
+    #>> Measure 0: Channel-wise entropy in nats over pixels
+    if 0 in complexities_to_use:
+        if verbose: print('Computing image entropy')
+        shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(3)])
+        add_new(shannon_entropy, 0)
 
-    #>> High frequency content via weighted average
+    #>> Measure 1: Averaged channel-wise local entropy
+    if 1 in complexities_to_use:
+        if verbose: print('Computing local discrete entropies')
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            le_img = np.array([ skimage.filters.rank.entropy(img[:,:,i], disk(local_entropy_disk_size))
+                        for i in range(3) ]).mean(axis=0)
+        if show_locent_image: imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma')
+        local_entropy = np.mean(le_img)
+        add_new(local_entropy, 1)
+
+    #>> Measure 2: High frequency content via weighted average
     # See e.g., https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_transforms/py_fourier_transform/py_fourier_transform.html
-    if verbose: print('Computing Fourier images')
-    fourier_images = [ fp.fft2(img[:,:,find]) for find in range(3) ]
-    shifted_fourier_images = np.array([ np.fft.fftshift(fourier_image) for fourier_image in fourier_images ])
-    shifted_fourier_logmag_image = np.array([ np.log( np.abs(shifted_fourier_image) )
-                                        for shifted_fourier_image in shifted_fourier_images
-                                    ]).transpose((1,2,0)) # Same shape as input
-    avg_fourier_image = np.mean(shifted_fourier_logmag_image, axis=2)
-    # Manhatten weighting from center
-    index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
-                        for j in range(0,w)] for i in range(0,h)])
-    index_grid_cen = index_grid_cen / np.max(index_grid_cen) # Normalize weights into [0,1]
-    fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
-    fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
-    if show_fourier_image:
-        imdisplay(avg_fourier_image, 'Fourier Transform', colorbar=True, cmap='viridis')
-        imdisplay(index_grid_cen, 'Fourier-space distance weights', colorbar=True, cmap='gray')
-        # Avoid loss of phase information in order to view image (but note it's ignored in the metric)
-        reweighted_shifted_fourier_img_wp = (np.mean(shifted_fourier_images, axis=0) * index_grid_cen) / np.sum(index_grid_cen)
-        real_space_reweighted_img = np.abs( fp.ifft2( np.fft.ifftshift(reweighted_shifted_fourier_img_wp)) )
-        imdisplay(real_space_reweighted_img, 'Reweighted real-space image', colorbar=True, cmap='hot')
+    if 2 in complexities_to_use:
+        if verbose: print('Computing Fourier images')
+        fourier_images = [ fp.fft2(img[:,:,find]) for find in range(3) ]
+        shifted_fourier_images = np.array([ np.fft.fftshift(fourier_image) for fourier_image in fourier_images ])
+        shifted_fourier_logmag_image = np.array([ np.log( np.abs(shifted_fourier_image) )
+                                            for shifted_fourier_image in shifted_fourier_images
+                                        ]).transpose((1,2,0)) # Same shape as input
+        avg_fourier_image = np.mean(shifted_fourier_logmag_image, axis=2)
+        # Manhatten weighting from center
+        index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
+                            for j in range(0,w)] for i in range(0,h)])
+        index_grid_cen = index_grid_cen / np.max(index_grid_cen) # Normalize weights into [0,1]
+        fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
+        fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
+        if show_fourier_image:
+            imdisplay(avg_fourier_image, 'Fourier Transform', colorbar=True, cmap='viridis')
+            imdisplay(index_grid_cen, 'Fourier-space distance weights', colorbar=True, cmap='gray')
+            # Avoid loss of phase information in order to view image (but note it's ignored in the metric)
+            reweighted_shifted_fourier_img_wp = (np.mean(shifted_fourier_images, axis=0) * index_grid_cen) / np.sum(index_grid_cen)
+            real_space_reweighted_img = np.abs( fp.ifft2( np.fft.ifftshift(reweighted_shifted_fourier_img_wp)) )
+            imdisplay(real_space_reweighted_img, 'Reweighted real-space image', colorbar=True, cmap='hot')
+        add_new(fourier_weighted_mean_coef, 2)
 
-    #>> Local (intra-)patch covariances
-    if verbose: print('Computing local patch covariances')
-    patches = np.array([ view_as_windows(np.ascontiguousarray(img[:,:,k]),
-                (local_patch_size, local_patch_size), step=wstep) for k in range(3) ])
-    ps, wt = patches.shape, local_patch_size**2
-    covariance_mat_dets = [[ np.linalg.det(np.cov( patches[:,i,j,:,:].reshape(wt, 3).T ))
-                             for j in range(ps[2]) ] for i in range(ps[1]) ]
-    local_covar_img = np.log(np.array(covariance_mat_dets) + 1e-3)
-    if show_loccov_image: imdisplay(local_covar_img, 'Local Covariances', cmap='viridis', colorbar=True)
-    local_covar = np.mean(local_covar_img)
+    #>> Measure 3: Local (intra-)patch covariances
+    if 3 in complexities_to_use:
+        if verbose: print('Computing local patch covariances')
+        # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
+        patches = np.array([ view_as_windows(np.ascontiguousarray(img[:,:,k]),
+                    (local_patch_size, local_patch_size), step=wstep) for k in range(3) ])
+        ps, wt = patches.shape, local_patch_size**2
+        # Per patch: (1) extracts a patch
+        covariance_mat_dets = [[ np.linalg.det(np.cov( patches[:,i,j,:,:].reshape(wt, 3).T ))
+                                 for j in range(ps[2]) ] for i in range(ps[1]) ]
+        local_covar_img = np.log(np.array(covariance_mat_dets) + 1e-3)
+        if show_loccov_image: imdisplay(local_covar_img, 'Local Covariances', cmap='viridis', colorbar=True)
+        local_covar = np.mean(local_covar_img)
+        add_new(local_covar, 3)
 
-    #>> Average gradient magnitude of the input
+    #>> Measure 4: Average gradient magnitude of the input
     # Note that this computes the second-order derivatives if we're using a gradient image
-    grad_img = generate_gradient_magnitude_image(img)
-    if show_gradient_img:
-        gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
-        imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True)
-    average_edginess = np.mean(grad_img)
+    if 4 in complexities_to_use:
+        grad_img = generate_gradient_magnitude_image(img)
+        if show_gradient_img:
+            gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
+            imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True)
+        average_edginess = np.mean(grad_img)
+        add_new(average_edginess, 4)
 
     ### </ Finished computing complexity measures /> ###
 
+    # Minor checks
+    assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
+
     # Overall complexities
-    complexities = [shannon_entropy, local_entropy, fourier_weighted_mean_coef, local_covar, average_edginess]
+    #complexities = [shannon_entropy, local_entropy, fourier_weighted_mean_coef, local_covar, average_edginess]
 
     # Show images if needed
     if show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img:
@@ -210,16 +279,17 @@ if grad_and_orig: del args_d['use_gradient_image']
 if os.path.isdir(path):
     print(','.join(S))
     for f in [f for f in os.listdir(path) if f.endswith('.jpg') or f.endswith('.png')]:
-        p, c = compute_complexities(os.path.join(path,f), **args_d)
+        p, c = compute_complexities(os.path.join(path,f), complexities_to_use, **args_d)
         print("%s,%s" % (p,",".join(c)))
         if grad_and_orig: # Just did original
-            p, c = compute_complexities(os.path.join(path,f), use_gradient_image=True, **args_d)
+            p, c = compute_complexities(os.path.join(path,f), complexities_to_use, 
+                                        use_gradient_image=True, **args_d)
             print("%s,%s" % (p,",".join(c)))
 ### Case 2: Compute complexity measure on a single image ###
 else: # Single image case
-    compute_complexities(path, to_print=True, **args_d)
+    compute_complexities(path, complexities_to_use, to_print=True, **args_d)
     if grad_and_orig:
-        compute_complexities(path, to_print=True, use_gradient_image=True, **args_d)
+        compute_complexities(path, complexities_to_use, to_print=True, use_gradient_image=True, **args_d)
 
 
 #
