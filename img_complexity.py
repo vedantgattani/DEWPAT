@@ -1,25 +1,28 @@
 import os, sys, numpy as np, skimage, argparse, warnings
+import matplotlib.pyplot as plt
 from scipy import fftpack as fp
 from skimage.morphology import disk
 from skimage.util import view_as_windows
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from skimage import filters
-import matplotlib.pyplot as plt
+import entropy_estimators as EE 
 
 '''
-Usage: python dewlaps.py <input>
+Usage: python img_complexity.py <input>
     where input is either a folder of images or a single image.
 Note: operates in RGB color space.
 '''
 
-parser = argparse.ArgumentParser(description='Computes some simple dewlap complexities')
+parser = argparse.ArgumentParser(description='Computes some simple measure of image complexity')
 parser.add_argument('input', type=str, help='Input: either a folder or an image')
 parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
+# Gradient image usage
 parser.add_argument('--use_grad_only', dest='use_grad', action='store_true',
         help='Whether to use the gradient of the image instead of the image itself')
 parser.add_argument('--use_grad_too', dest='use_grad_too', action='store_true',
         help='If specified, computes complexities of both original and gradient image')
+# Display options
 parser.add_argument('--show_fourier', dest='show_fourier', action='store_true',
         help='Whether to display the Fourier transformed and weighted image')
 parser.add_argument('--show_local_ents', dest='show_locents', action='store_true',
@@ -36,7 +39,7 @@ args = parser.parse_args()
 
 # Names of complexity measures
 S = ['Image path', 'Pixelwise Shannon entropy', 'Average local entropies',
-     'Frequency-weighted mean coefficient', 'Local patch logdet covar',
+     'Frequency-weighted mean coefficient', 'Local patch covariance',
      'Average gradient magnitude']
 
 #------------------------------------------------------------------------------#
@@ -141,6 +144,7 @@ def compute_complexities(impath,
     # Manhatten weighting from center
     index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
                         for j in range(0,w)] for i in range(0,h)])
+    index_grid_cen = index_grid_cen / np.max(index_grid_cen) # Normalize weights into [0,1]
     fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
     fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
     if show_fourier_image:
