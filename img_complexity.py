@@ -287,7 +287,8 @@ def compute_complexities(impath,    # Path to input image file
         # Manhatten weighting from center
         index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
                             for j in range(0,w)] for i in range(0,h)])
-        index_grid_cen = index_grid_cen / np.max(index_grid_cen) # Normalize weights into [0,1]
+        # Normalize weights into [0,1]. Note this doesn't matter because of the later sum normalization.
+        index_grid_cen = index_grid_cen / np.max(index_grid_cen) 
         fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
         fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
         if show_fourier_image:
