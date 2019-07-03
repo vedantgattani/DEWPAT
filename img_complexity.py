@@ -8,6 +8,8 @@ from skimage import filters
 import entropy_estimators as EE_cont 
 from scipy.stats import entropy as scipy_discrete_shannon_entropy 
 
+from utils import *
+
 '''
 Usage: python img_complexity.py <input>
     where input is either a folder of images or a single image.
@@ -23,6 +25,8 @@ parser.add_argument('input', type=str, help='Input: either a folder or an image'
 parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
 parser.add_argument('--ignore_alpha', dest='ignore_alpha', action='store_true',
+        help='Whether to ignore the alpha mask channel')
+parser.add_argument('--timing', dest='ignore_alpha', action='store_true',
         help='Whether to ignore the alpha mask channel')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
@@ -114,27 +118,7 @@ complexities_to_use = [ val for val in input_vals if not val is None ]
 
 #------------------------------------------------------------------------------#
 
-def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
-    '''
-    Generates the per-channel L2 gradient magnitude image of the input `img`.
-    Each edge pixel value is divided by `divider` (enforce output in [0,1] + numerical stability).
-    If `to_ubyte` is specified True, the output is converted to the ubyte numpy dtype.
-    '''
-    @adapt_rgb(each_channel)
-    def cgrad_x(img):
-        return filters.scharr_v(img)
-    @adapt_rgb(each_channel)
-    def cgrad_y(img):
-        return filters.scharr_h(img)
-    Ig_x, Ig_y = cgrad_x(img), cgrad_y(img)
-    Ig_x_sq, Ig_y_sq = Ig_x * Ig_x, Ig_y * Ig_y
-    gradient_img = np.sqrt(Ig_x_sq + Ig_y_sq) / divider # to remain in [0,1]
-    # print('GradImg min/max: %.2f/%.2f' % (gradient_img.min(), gradient_img.max()))
-    if to_ubyte:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            gradient_img = skimage.img_as_ubyte(gradient_img)
-    return gradient_img
+
 
 def compute_complexities(impath,    # Path to input image file
         complexities_to_use,        # List of ints describing which complexity metric to apply
@@ -184,12 +168,7 @@ def compute_complexities(impath,    # Path to input image file
         May want to consider measures based on the structure tensor.
         May want to consider whether to log the covariance determinant or not.
     '''
-    # Helper function for displays
-    def imdisplay(inim, title, colorbar=False, cmap=None):
-        fig, ax = plt.subplots()
-        imm = ax.imshow(inim) if cmap is None else ax.imshow(inim, cmap=cmap)
-        plt.title(title)
-        if colorbar: fig.colorbar(imm)
+
     # Helper for single parameter affine transform
     _oneparam_affine = lambda x, affp: (x + affp) / affp
     # Read original image
@@ -238,19 +217,22 @@ def compute_complexities(impath,    # Path to input image file
 
     #>> Measure 0: Channel-wise entropy in nats over pixels
     if 0 in complexities_to_use:
-        if using_alpha_mask:
-            if verbose: print('Computing image entropy (alpha masked)')  
-            def masked_discrete_shannon(channel):
-                channel = np.copy(channel).astype(int)
-                _fake_pixel_val = -1000
-                channel[ alpha_mask <= 0 ] = _fake_pixel_val
-                unique_vals, counts = np.unique(channel, return_counts=True)
-                new_counts = [ c for ii, c in enumerate(counts) if not unique_vals[ii] == _fake_pixel_val ]
-                return scipy_discrete_shannon_entropy(new_counts, base=np.e)
-            shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i]) for i in range(3)])
-        else:
-            if verbose: print('Computing image entropy')
-            shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(3)])
+        def discrete_pixelwise_shannon_entropy(img):
+            if using_alpha_mask:
+                if verbose: print('Computing image entropy (alpha masked)')  
+                def masked_discrete_shannon(channel):
+                    channel = np.copy(channel).astype(int)
+                    _fake_pixel_val = -1000
+                    channel[ alpha_mask <= 0 ] = _fake_pixel_val
+                    unique_vals, counts = np.unique(channel, return_counts=True)
+                    new_counts = [ c for ii, c in enumerate(counts) if not unique_vals[ii] == _fake_pixel_val ]
+                    return scipy_discrete_shannon_entropy(new_counts, base=np.e)
+                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i]) for i in range(3)])
+            else:
+                if verbose: print('Computing image entropy')
+                shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(3)])
+            return shannon_entropy
+        shannon_entropy = discrete_pixelwise_shannon_entropy(img)
         add_new(shannon_entropy, 0)
 
     #>> Measure 1: Averaged channel-wise local entropy
@@ -300,14 +282,16 @@ def compute_complexities(impath,    # Path to input image file
     if 3 in complexities_to_use:
         if verbose: print('Computing local patch covariances')
         # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
-        patches = np.array([ view_as_windows(np.ascontiguousarray(img[:,:,k]),
-                                             (local_patch_size, local_patch_size), step=wstep) 
-                            for k in range(3) ])
-        ps, wt = patches.shape, local_patch_size**2
+        # patches = np.array([ view_as_windows(np.ascontiguousarray(img[:,:,k]),
+        #                                      (local_patch_size, local_patch_size), step=wstep) 
+        #                     for k in range(3) ])
+        # ps, wt = patches.shape, local_patch_size**2
+        patches, ps, wt = patches_over_channels(img, local_patch_size, wstep)
         # Per patch: (1) extracts window, (2) unfolds it into pixel values, (3) computes the covariance
         if using_alpha_mask:
-            alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
-                                    (local_patch_size, local_patch_size), step=wstep) # H x W x Px x Py
+            # alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
+            #                         (local_patch_size, local_patch_size), step=wstep) # H x W x Px x Py
+            alpha_over_patches = patches_per_channel(alpha_mask, local_patch_size, wstep)
             def masked_detcov(i,j):
                 mask_patch = alpha_over_patches[i,j,:,:]
                 if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
@@ -358,24 +342,30 @@ def compute_complexities(impath,    # Path to input image file
         if verbose: print('Computing continuous patch-wise differential entropy')
         # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
         float_img = skimage.img_as_float(img)
-        patches = np.array([ view_as_windows(np.ascontiguousarray(float_img[:,:,k]),
-                                             (diff_ent_patch_size, diff_ent_patch_size), 
-                                             step=diff_ent_window_step) 
-                            for k in range(3) ])
+        patches, ps, wt = patches_over_channels(float_img, diff_ent_patch_size, diff_ent_window_step)
+        # patches = np.array([ view_as_windows(np.ascontiguousarray(float_img[:,:,k]),
+        #                                      (diff_ent_patch_size, diff_ent_patch_size), 
+        #                                      step=diff_ent_window_step) 
+        #                     for k in range(3) ])
+        # ps, wt = patches.shape, diff_ent_patch_size**2
         if verbose: print('\tPatch windows size:', patches.shape)
-        ps, wt = patches.shape, diff_ent_patch_size**2
         # Gathers unfolded patches across the image
         if using_alpha_mask:
-            alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
-                                    (diff_ent_patch_size, diff_ent_patch_size), 
-                                    step=diff_ent_window_step) # H x W x Px x Py
-            def vectorize_patch(i,j):
-                mask_patch = alpha_over_patches[i,j,:,:]
-                if 0 in mask_patch: return None
-                unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
-                return unfolded_patch
-            patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
-            patch_vectors = np.array([vp for vp in patch_vectors if not vp is None])
+            # alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
+            #                         (diff_ent_patch_size, diff_ent_patch_size), 
+            #                         step=diff_ent_window_step) # H x W x Px x Py
+            alpha_over_patches = patches_per_channel(alpha_mask, diff_ent_patch_size, diff_ent_window_step)
+            # def vectorize_patch(i,j):
+            #     mask_patch = alpha_over_patches[i,j,:,:]
+            #     if 0 in mask_patch: return None
+            #     unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
+            #     return unfolded_patch
+            # patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
+            
+            # patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
+            # patch_vectors = np.array([vp for vp in patch_vectors if not vp is None])
+
+            patch_vectors = vectorize_masked_patches(patches, alpha_over_patches, ps[1], ps[2])
         else:
             patch_vectors = np.array([ patches[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
         if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
@@ -391,26 +381,36 @@ def compute_complexities(impath,    # Path to input image file
         # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
         # TODO merge the patch extractor code here with the one just above to reduce reduandancy
         float_img = skimage.img_as_float(img) if global_cov_norm_img else img
-        patches = np.array([ view_as_windows(np.ascontiguousarray(float_img[:,:,k]),
-                                             (global_cov_window_size, global_cov_window_size), 
-                                             step=global_cov_window_step) 
-                            for k in range(3) ])
-        if verbose: print('\tPatch windows size:', patches.shape)
-        ps, wt = patches.shape, global_cov_window_size**2
+
+        # patches = np.array([ view_as_windows(np.ascontiguousarray(float_img[:,:,k]),
+        #                                      (global_cov_window_size, global_cov_window_size), 
+        #                                      step=global_cov_window_step) 
+        #                     for k in range(3) ])
+        # ps, wt = patches.shape, global_cov_window_size**2
+
+        patchesgc, ps, wt = patches_over_channels(float_img, global_cov_window_size, global_cov_window_step)
+
+        if verbose: print('\tPatch windows size:', patchesgc.shape)
+
         # Gathers unfolded patches across the image
         if using_alpha_mask:
-            alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
-                                    (global_cov_window_size, global_cov_window_size), 
-                                    step=global_cov_window_step) # H x W x Px x Py
-            def vectorize_patch(i,j):
-                mask_patch = alpha_over_patches[i,j,:,:]
-                if 0 in mask_patch: return None
-                unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
-                return unfolded_patch
-            patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
-            patch_vectors = np.array([vp for vp in patch_vectors if not vp is None])
+            # alpha_over_patches = view_as_windows(np.ascontiguousarray( alpha_mask ), 
+            #                         (global_cov_window_size, global_cov_window_size), 
+            #                         step=global_cov_window_step) # H x W x Px x Py
+            alpha_over_patchesgc = patches_per_channel(alpha_mask, global_cov_window_size, global_cov_window_step)
+            # def vectorize_patch(i,j):
+            #     mask_patch = alpha_over_patches[i,j,:,:]
+            #     if 0 in mask_patch: return None
+            #     unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
+            #     return unfolded_patch
+
+            patch_vectors = vectorize_masked_patches(patchesgc, alpha_over_patchesgc, ps[1], ps[2])
+
+            # patch_vectors = [ vectorize_patch(i,j) for i in range(ps[1]) for j in range(ps[2]) ]
+            # patch_vectors = np.array([vp for vp in patch_vectors if not vp is None])
+
         else:
-            patch_vectors = np.array([ patches[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+            patch_vectors = np.array([ patchesgc[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
         if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
         # Compute covariance matrix of the unfolded vectors
         global_cov = np.cov( patch_vectors.T )
