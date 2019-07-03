@@ -4,6 +4,8 @@ from skimage.util import view_as_windows
 import matplotlib.pyplot as plt
 from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
+from timeit import default_timer as timer
+
 
 ### Visualization helpers ###
 
@@ -16,7 +18,8 @@ def imdisplay(inim, title, colorbar=False, cmap=None):
 
 ### Patch extraction helpers ###
 
-def patches_over_channels(img, patch_size, window_step, return_meta=True):
+def patches_over_channels(img, patch_size, window_step, return_meta=True, floatify=False):
+    if floatify: img = skimage.img_as_float(img)
     P = np.array([ 
             # view_as_windows(np.ascontiguousarray(img[:,:,k]),
                             # (local_patch_size, local_patch_size), step=wstep) 
@@ -69,15 +72,21 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
             gradient_img = skimage.img_as_ubyte(gradient_img)
     return gradient_img
 
+### Timing helpers ###
 
+# Note: calling this as a decorator actually runs it, so that 
+# replacer is the actual decorator used.
+def timing_decorator(do_timing):
+    def decorator(wrapped_func):
+        if do_timing:
+            def replacement(*args, **kwargs):
+                start = timer()
+                output = wrapped_func(*args, **kwargs)
+                end = timer()
+                return output, (end - start)
+            return replacement
+        else:
+            return wrapped_func
+    return decorator
 
-
-
-
-
-
-
-
-
-
-
+#
