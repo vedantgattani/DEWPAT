@@ -27,7 +27,7 @@ parser.add_argument('--verbose', dest='verbose', action='store_true',
 parser.add_argument('--ignore_alpha', dest='ignore_alpha', action='store_true',
         help='Whether to ignore the alpha mask channel')
 parser.add_argument('--timing', dest='timing', action='store_true',
-        help='Whether to measure timing on each function')
+        help='Whether to measure and print timing on each function')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
             description=('Controls which complexity measures to utilize. ' + 
@@ -159,12 +159,8 @@ def compute_complexities(impath,    # Path to input image file
         This can be turned off via `transform_diff_ent` and `global_cov_aff_trans`.
 
     Notes:
-        These measures still take the background pixels into account.
         RGB color space is used, which may not be perceptually ideal.
         These measures may be image resolution or size dependent.
-        They can also be affected by the amount of image area taken up by the dewlap,
-            or the length of the boundary of the dewlap in the image.
-        May want to exclude the background and/or the edges of the dewlap.
         May want to consider measures based on the structure tensor.
         May want to consider whether to log the covariance determinant or not.
     '''
@@ -286,6 +282,8 @@ def compute_complexities(impath,    # Path to input image file
         add_new(mean_weighted_fourier_coef(img), 2)
 
     #>> Measure 3: Local (intra-)patch covariances
+    # Closely related to the distribution of L_2 distance between patches
+    # TODO vectorize over the patches
     if 3 in complexities_to_use:
         @timing_decorator(args.timing)
         def local_patch_covariance(img):
@@ -350,7 +348,6 @@ def compute_complexities(impath,    # Path to input image file
         def patchwise_diff_ent(img):
             if verbose: print('Computing continuous patch-wise differential entropy')
             # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
-            # float_img = skimage.img_as_float(img)
             patches_dse, ps, wt = patches_over_channels(img, diff_ent_patch_size, diff_ent_window_step, floatify=True)
             if verbose: print('\tPatch windows size:', patches_dse.shape)
             # Gathers unfolded patches across the image
@@ -373,7 +370,6 @@ def compute_complexities(impath,    # Path to input image file
         def patchwise_global_covar(img):
             if verbose: print('Computing global patch-wise covariance')
             # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
-            # float_img = skimage.img_as_float(img) if global_cov_norm_img else img
             patchesgc, ps, wt = patches_over_channels(img, global_cov_window_size, global_cov_window_step, floatify=global_cov_norm_img)
             if verbose: print('\tPatch windows size:', patchesgc.shape)
             # Gathers unfolded patches across the image
@@ -414,7 +410,7 @@ def compute_complexities(impath,    # Path to input image file
     elif print_mode == 'compact':
         print("%s,%s" % (impath,",".join(complexities_strings)))
         if args.timing:
-            print('  |> Timings:', ",".join( list(map(lambda f: '%.4f' % f, timings)) ), '[Total: %.1f]' % sum(timings))
+            print('  |> Timings:', ",".join( list(map(lambda f: '%.3f' % f, timings)) ), '[Total: %.1fs]' % sum(timings))
     # Return final output
     if args.timing: return impath, complexities_strings, timings    
     return impath, complexities_strings
@@ -440,12 +436,9 @@ if os.path.isdir(path):
     print(','.join(S))
     for f in [f for f in os.listdir(path) if f.endswith('.jpg') or f.endswith('.png')]:
         compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
-        # p, c = compute_complexities(os.path.join(path,f), complexities_to_use, **args_d)
-        # print("%s,%s" % (p,",".join(c)))
         if grad_and_orig: # Just did original
             compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
                                         use_gradient_image=True, **args_d)
-            # print("%s,%s" % (p,",".join(c)))
 ### Case 2: Compute complexity measure on a single image ###
 else: # Single image case
     compute_complexities(path, complexities_to_use, print_mode='single', **args_d)

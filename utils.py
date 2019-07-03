@@ -21,8 +21,6 @@ def imdisplay(inim, title, colorbar=False, cmap=None):
 def patches_over_channels(img, patch_size, window_step, return_meta=True, floatify=False):
     if floatify: img = skimage.img_as_float(img)
     P = np.array([ 
-            # view_as_windows(np.ascontiguousarray(img[:,:,k]),
-                            # (local_patch_size, local_patch_size), step=wstep) 
             patches_per_channel(img[:,:,k], patch_size, window_step)
             for k in range(3) 
         ])
