@@ -72,8 +72,8 @@ group_p = parser.add_argument_group('Algorithmic parameters',
             description='Options controlling parameters of complexity estimation algorithms')
 group_p.add_argument('--exact_emd', action='store_true', 
             help='Specify to compute the exact EMD via linear programming, rather than the Sinkhorn approximation')
-group_p.add_argument('--coord_aware_emd', action='store_true',
-            help='Specify to append spatial coords to patch elements')
+group_p.add_argument('--emd_ignore_coords', action='store_true',
+            help='Specify to avoid appending local normalized spatial coordinates to patch elements')
 group_p.add_argument('--squared_euc_metric', action='store_true',
             help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
 group_p.add_argument('--emd_downscaling', type=float, default=0.2,
@@ -410,7 +410,8 @@ def compute_complexities(impath,    # Path to input image file
     if 8 in complexities_to_use:
         import ot
         @timing_decorator(args.timing) # --exact_emd --coord_aware_emd --pairwise_emd
-        def pairwise_wasserstein_distance(img, use_sinkhorn, sinkhorn_gamma, coordinate_aware, metric, image_rescaling_factor):
+        def pairwise_wasserstein_distance(img, use_sinkhorn, sinkhorn_gamma, coordinate_aware, 
+                metric, image_rescaling_factor, coordinate_scale):
             assert metric in ['euclidean', 'sqeuclidean'], "Underlying metric must be 'euclidean' or 'sqeuclidean'"
             if verbose: 
                 print("Computing inter-patch Earth Mover's distances")
@@ -429,14 +430,9 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatches Shape', patches_emd.shape)
             if using_alpha_mask:
                 
-                #imdisplay(skimage.transform.rescale( skimage.img_as_float(skimage.img_as_ubyte(alpha_mask*255)), 
-                #                                     scale=image_rescaling_factor), 'Mask', True)
 
                 imdisplay( alpha_mask, 'Original Mask', True )
 
-                #alpha_mask_ds = skimage.img_as_ubyte( skimage.img_as_bool( 
-                #                    skimage.transform.rescale( alpha_mask * 255, scale=image_rescaling_factor )
-                #                ) )
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     alpha_mask_ds = skimage.img_as_ubyte(
@@ -445,10 +441,6 @@ def compute_complexities(impath,    # Path to input image file
                                             scale=image_rescaling_factor) )
                 alpha_mask_ds[ alpha_mask_ds >  1e-8 ] = 1
                 alpha_mask_ds[ alpha_mask_ds <= 1e-8 ] = 0
-                #alpha_mask_ds =          skimage.transform.rescale(
-                #                        skimage.img_as_bool(alpha_mask*255), 
-                #                        scale=image_rescaling_factor, anti_aliasing=False) 
-                                #) )
                 
                 imdisplay(alpha_mask_ds, 'Downscaled mask', True)
                 #plt.show()
@@ -469,14 +461,23 @@ def compute_complexities(impath,    # Path to input image file
             assert n_to_vis <= patch_lists.shape[0], "Trying to display more patches than exist"
             # Index into list (N_patches x unfolded_window_size x 3)
             patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
-            patch_display(patches_to_vis, nr, nc, show=True, title='EMD Patches', subtitles=ris)
+            patch_display(patches_to_vis, nr, nc, show=False, title='EMD Patches', subtitles=ris)
 
             # TODO fix overflows
 
             # Append coordinates if desired
             if coordinate_aware:
                 print('Using coordinate-aware calculations')
-                sys.exit(1)
+                n_patches = patch_lists.shape[0]
+                refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, 3)
+                
+                lin_walk = np.linspace(0.0, 1.0, emd_window_size)
+                patch_of_coords = np.transpose( np.array( np.meshgrid(lin_walk, lin_walk) ), (1,2,0) ) * coordinate_scale
+                coord_patches = np.repeat( patch_of_coords[ np.newaxis, :, : ], n_patches, axis=0 )
+                patch_lists = np.concatenate( (coord_patches, refolded_patches), axis=3 ).reshape(n_patches, wt, 5)
+
+                if verbose: print('\tPatch sizes with appended coords:', patch_lists.shape)
+                #sys.exit(1)
                 # TODO
             # Choose solver
             if use_sinkhorn: # Entropy-regularized approximate solver
@@ -507,9 +508,17 @@ def compute_complexities(impath,    # Path to input image file
             # Combine EMDs into a single measure via averaging
             D_w = emds.mean() 
             return D_w
+
+        # Controls scale (and thus relative weight) of coordinate vs pixel distance.
+        # By default, patch pixels are given local x,y, coords in [0,alpha], where alpha
+        # is the coordinate scale. If alpha is too large, pixel space distance is ignored;
+        # too small, intra-patch spatial distance is ignored.
+        _coord_scale = 0.1 
+
         emd_args = { 'use_sinkhorn'           : not args.exact_emd,
-                     'sinkhorn_gamma'         : 1e-3,
-                     'coordinate_aware'       : args.coord_aware_emd,
+                     'sinkhorn_gamma'         : 1e-2,
+                     'coordinate_scale'       : _coord_scale,                      
+                     'coordinate_aware'       : not args.emd_ignore_coords,
                      'image_rescaling_factor' : args.emd_downscaling,
                      'metric'                 : 'sqeuclidean' if args.squared_euc_metric else 'euclidean' }
         add_new(pairwise_wasserstein_distance(img, **emd_args), 8)
