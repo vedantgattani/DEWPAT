@@ -1,11 +1,9 @@
-
 import os, sys, numpy as np, skimage, argparse, warnings
 from skimage.util import view_as_windows
 import matplotlib.pyplot as plt
 from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
-
 
 ### Visualization helpers ###
 
@@ -16,10 +14,37 @@ def imdisplay(inim, title, colorbar=False, cmap=None):
     plt.title(title)
     if colorbar: fig.colorbar(imm)
 
+def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None):
+    # patches must be n_patches x H x W x C 
+    N = nrows * ncols
+    assert N == patches.shape[0] and len(subtitles) == N
+    fig, ax = plt.subplots(nrows=nrows, ncols=ncols)
+    for i, axi in enumerate(ax.flat):
+        # i runs from 0 to (nrows*ncols-1)
+        # axi is equivalent with ax[rowid][colid]
+        #img = np.random.randint(10, size=(h,w))
+        axi.imshow(patches[i,:,:,:])
+        #axi.imshow(img, alpha=0.25)
+        # get indices of row/column
+        rowid = i // ncols
+        colid = i % ncols
+        if subtitles is None:
+        # write row/col indices as axes' title for identification
+            axi.set_title( ('%d' % i) + "-R"+str(rowid)+"C"+str(colid))
+        else:
+            subtitle = subtitles[i]
+            axi.set_title( str(subtitle) )
+    plt.tight_layout(True)
+    if not title is None: fig.canvas.set_window_title(title)
+    if show: plt.show()
+
 ### Patch extraction helpers ###
 
 def patches_over_channels(img, patch_size, window_step, return_meta=True, floatify=False):
-    if floatify: img = skimage.img_as_float(img)
+    if floatify: 
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            img = skimage.img_as_float(img)
     P = np.array([ 
             patches_per_channel(img[:,:,k], patch_size, window_step)
             for k in range(3) 
@@ -40,11 +65,32 @@ def vectorize_single_masked_patch(patches, mask, i, j, wt):
     unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
     return unfolded_patch
 
-def vectorize_masked_patches(patches, mask, H, W):
+def vectorize_single_masked_patch_as_list(patches, mask, i, j, wt):
+    mask_patch = mask[i,j,:,:]
+    if 0 in mask_patch: return None
+    listified_patch = patches[:,i,j,:,:].reshape(3, wt).T
+    return listified_patch
+
+def vectorize_masked_patches(patches, mask, H, W, as_list=False, flatten=True, remove_none=True):
     wt = mask.shape[2] * mask.shape[3] # patch/window total size
-    P = [ vectorize_single_masked_patch(patches, mask, i, j, wt) 
-          for i in range(H) for j in range(W) ]
-    return np.array([vp for vp in P if not vp is None])
+    if flatten:
+        if as_list:
+            P = [ vectorize_single_masked_patch_as_list(patches, mask, i, j, wt) 
+                  for i in range(H) for j in range(W) ]
+        else:
+            P = [ vectorize_single_masked_patch(patches, mask, i, j, wt) 
+                  for i in range(H) for j in range(W) ]
+    else:
+        if as_list:
+            P = [ [ vectorize_single_masked_patch_as_list(patches, mask, i, j, wt) 
+                    for i in range(H) ] for j in range(W) ]
+        else:
+            P = [ [ vectorize_single_masked_patch(patches, mask, i, j, wt) 
+                    for i in range(H) ] for j in range(W) ]
+    if remove_none:
+        return np.array([vp for vp in P if not vp is None])
+    else:
+        return P
 
 ### Image processing helpers ###
 

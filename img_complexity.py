@@ -1,13 +1,11 @@
 import os, sys, numpy as np, skimage, argparse, warnings
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt, entropy_estimators as EE_cont
 from scipy import fftpack as fp
 from skimage.morphology import disk
 from skimage.util import view_as_windows
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from skimage import filters
-import entropy_estimators as EE_cont 
 from scipy.stats import entropy as scipy_discrete_shannon_entropy 
-
 from utils import *
 
 '''
@@ -65,6 +63,21 @@ group_c.add_argument('--global_patch_covar',
         dest='global_patch_covar', action='store_const', 
         const=7, default=None,
         help='Whether to use the global patch-wise log-determinant of the covariance of unfolded patches across the image')
+group_c.add_argument('--pairwise_emd',                  
+        dest='pairwise_emd', action='store_const', 
+        const=8, default=None,
+        help='Whether to use the pairwise Wasserstein distance across image patches')
+# Algorithm parameters
+group_p = parser.add_argument_group('Algorithmic parameters',
+            description='Options controlling parameters of complexity estimation algorithms')
+group_p.add_argument('--exact_emd', action='store_true', 
+            help='Specify to compute the exact EMD via linear programming, rather than the Sinkhorn approximation')
+group_p.add_argument('--coord_aware_emd', action='store_true',
+            help='Specify to append spatial coords to patch elements')
+group_p.add_argument('--squared_euc_metric', action='store_true',
+            help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
+group_p.add_argument('--emd_downscaling', type=float, default=0.2,
+            help='Specify image downscaling factor for EMD calculations')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -101,11 +114,12 @@ args = parser.parse_args()
 S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
           'Frequency-weighted Mean Coefficient', 'Local Patch Covariance',
           'Average Gradient Magnitude', 'Pixelwise Differential Entropy',
-          'Patchwise Differential Entropy', 'Global Patch Covariance']
+          'Patchwise Differential Entropy', 'Global Patch Covariance',
+          'Pairwise Wasserstein Distance']
 # Discern which measures to use
 input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, args.weighted_fourier,
                args.local_covars, args.grad_mag, args.diff_shannon_entropy, args.diff_shannon_entropy_patches,
-               args.global_patch_covar ]
+               args.global_patch_covar, args.pairwise_emd ]
 if all(map(lambda k: k is None, input_vals)):
     if args.verbose: print('Using all complexity measures')
     S = S_all
@@ -118,26 +132,32 @@ complexities_to_use = [ val for val in input_vals if not val is None ]
 
 #------------------------------------------------------------------------------#
 
-
-
 def compute_complexities(impath,    # Path to input image file
         complexities_to_use,        # List of ints describing which complexity metric to apply
         print_mode=None,            # Switch between multi-image CSV mode and single-image printing mode
         ### Measure parameters ###
+        # Local entropy options
         local_entropy_disk_size=24, # Patch size for local entropy calculations
+        # Local covariance options
         local_patch_size=16,        # Patch size for local covariance calculations
         local_covar_wstep=4,        # The step-size (stride) for the local covariance calculation
+        # Pair/pixelwise differential entropy options
         transform_diff_ent=True,    # Whether to affinely transform the differential entropy
         affine_param=150,           # Parameter used in affine transform for differential entropy
+        # Patchwise differential entropy options
         diff_ent_patch_size=3,      # Size of patch to unfold for differential entropy calculations
         diff_ent_window_step=2,     # Patch extraction step size for differential entropy estimation
+        # Global covariance options
         global_cov_window_size=5,   # Size of patch for global patch covariances 
         global_cov_window_step=2,   # Patch extraction step size for global patch covariance computations
         global_cov_norm_img=False,  # Whether to normalize the image into [0,1] before computing global covariances
         global_cov_aff_trans=True,  # Whether to affinely transform the output logdet covariances
         global_cov_affine_prm=100,  # Parameter used in affine transform for global patch-wise logdet covariances
+        # Pairwise EMD parameters
+        emd_window_size=32,         # Window size for pairwise EMD
+        emd_window_step=16,         # Window step for pairwise EMD
         ### Visualization Options ###
-        use_gradient_image=False,   # Whether to use channel-wise gradient image instead of the raw input
+        use_gradient_image = False, # Whether to use channel-wise gradient image instead of the raw input
         show_fourier_image = False, # Whether to display Fourier-based images
         show_locent_image = False,  # Whether to display the local entropies
         show_loccov_image = False,  # Whether to display the local covariances
@@ -250,7 +270,6 @@ def compute_complexities(impath,    # Path to input image file
         add_new(channelwise_local_entropies(img), 1)
 
     #>> Measure 2: High frequency content via weighted average
-    # See e.g., https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_transforms/py_fourier_transform/py_fourier_transform.html
     # Note: masks, even if present, are not used here, since we would be getting irregular domain harmonics rather than Fourier coefs
     # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
     # incur different frequency effects than on a black bg). 
@@ -295,12 +314,12 @@ def compute_complexities(impath,    # Path to input image file
                 def masked_detcov(i,j):
                     mask_patch = alpha_over_patches[i,j,:,:]
                     if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
-                    unfolded_patch = patches[:,i,j,:,:].reshape(wt, 3).T
+                    unfolded_patch = patches[:,i,j,:,:].reshape(3, wt)
                     return np.linalg.det(np.cov( unfolded_patch ))
                 covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
             else:
-                covariance_mat_dets = [[ np.linalg.det(np.cov( patches[:,i,j,:,:].reshape(wt, 3).T ))
-                                     for j in range(ps[2]) ] for i in range(ps[1]) ]
+                covariance_mat_dets = [[ np.linalg.det(np.cov( patches[:,i,j,:,:].reshape(3, wt) ))
+                                         for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
             if show_loccov_image: imdisplay(local_covar_img, 'Local Covariances', cmap='viridis', colorbar=True)
@@ -386,7 +405,118 @@ def compute_complexities(impath,    # Path to input image file
             return patchwise_covar_logdet
         add_new(patchwise_global_covar(img), 7)
 
+    #> Measure 8: Pairwise patch EMD (i.e., mean pairwise Wasserstein distance over patches)
+    # TODO visualization abilities
+    if 8 in complexities_to_use:
+        import ot
+        @timing_decorator(args.timing) # --exact_emd --coord_aware_emd --pairwise_emd
+        def pairwise_wasserstein_distance(img, use_sinkhorn, sinkhorn_gamma, coordinate_aware, metric, image_rescaling_factor):
+            assert metric in ['euclidean', 'sqeuclidean'], "Underlying metric must be 'euclidean' or 'sqeuclidean'"
+            if verbose: 
+                print("Computing inter-patch Earth Mover's distances")
+                print("\tParams: sinkhorn =", use_sinkhorn, 'sinkhorn reg =', sinkhorn_gamma, 
+                        'coord aware =', coordinate_aware, 'metric =', metric, 'resize =', image_rescaling_factor)
+                print('\tImage dims', img.shape)
+            # Resize image
+            img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, multichannel=True)
+            if verbose: print('\tDownscaled image dims:', img.shape)
+
+            imdisplay(img, 'Downscaled img')
+            #plt.show()
+            
+            # Extract patches
+            patches_emd, ps, wt = patches_over_channels(img, emd_window_size, emd_window_step, floatify=True)
+            if verbose: print('\tPatches Shape', patches_emd.shape)
+            if using_alpha_mask:
+                
+                #imdisplay(skimage.transform.rescale( skimage.img_as_float(skimage.img_as_ubyte(alpha_mask*255)), 
+                #                                     scale=image_rescaling_factor), 'Mask', True)
+
+                imdisplay( alpha_mask, 'Original Mask', True )
+
+                #alpha_mask_ds = skimage.img_as_ubyte( skimage.img_as_bool( 
+                #                    skimage.transform.rescale( alpha_mask * 255, scale=image_rescaling_factor )
+                #                ) )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    alpha_mask_ds = skimage.img_as_ubyte(
+                                        skimage.transform.rescale( 
+                                            skimage.img_as_float(skimage.img_as_ubyte(alpha_mask*255)), 
+                                            scale=image_rescaling_factor) )
+                alpha_mask_ds[ alpha_mask_ds >  1e-8 ] = 1
+                alpha_mask_ds[ alpha_mask_ds <= 1e-8 ] = 0
+                #alpha_mask_ds =          skimage.transform.rescale(
+                #                        skimage.img_as_bool(alpha_mask*255), 
+                #                        scale=image_rescaling_factor, anti_aliasing=False) 
+                                #) )
+                
+                imdisplay(alpha_mask_ds, 'Downscaled mask', True)
+                #plt.show()
+
+                alpha_over_patches_emd = patches_per_channel(alpha_mask_ds, emd_window_size, emd_window_step)
+                #print(alpha_over_patches_emd)
+                #sys.exit(0)
+                patch_lists = vectorize_masked_patches(patches_emd, alpha_over_patches_emd, ps[1], ps[2], as_list=True)
+            else:
+                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(3, wt).T for i in range(ps[1]) for j in range(ps[2]) ])
+            if verbose: print('\tPatch lists shape:', patch_lists.shape)
+
+            nr, nc = 5, 4
+            _random_vis = False
+            n_to_vis = nr * nc
+            if _random_vis: ris = np.random.choice(patch_lists.shape[0], size=n_to_vis, replace=False)
+            else:           ris = np.array( range(n_to_vis) )
+            assert n_to_vis <= patch_lists.shape[0], "Trying to display more patches than exist"
+            # Index into list (N_patches x unfolded_window_size x 3)
+            patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
+            patch_display(patches_to_vis, nr, nc, show=True, title='EMD Patches', subtitles=ris)
+
+            # TODO fix overflows
+
+            # Append coordinates if desired
+            if coordinate_aware:
+                print('Using coordinate-aware calculations')
+                sys.exit(1)
+                # TODO
+            # Choose solver
+            if use_sinkhorn: # Entropy-regularized approximate solver
+                solver = lambda a,b,M: ot.sinkhorn2(a,b,M,sinkhorn_gamma)
+            else: # Exact linear programming solver
+                solver = ot.emd2
+            n = patch_lists.shape[0]
+            def pair_emd(xs, xt, ind, should_print):
+                if verbose and should_print: print('\tComputing EMD %d/%d' % (ind+1,n))
+                # Distance matrix
+                M = ot.dist(xs, xt, metric=metric) #+ 1e-7 # Prevent M.max() from being zero
+                max_d = M.max()
+                print(max_d)
+                if max_d < 1e-5: return 0.0
+                M /= max_d
+                #print(xs, xt, M)
+                # Uniform empirical delta density weightings
+                a, b = ot.unif(wt), ot.unif(wt)
+                # Compute EMD
+                emd_final = solver(a,b,M)
+                if type(emd_final) is float: return emd_final
+                else: return emd_final[0]
+            # Compute EMDs
+            if verbose: print('\tComputing pairwise EMDs')
+            emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, j == i+1) 
+                              for i in range(n) for j in range(i+1,n) ])
+            print(emds)
+            # Combine EMDs into a single measure via averaging
+            D_w = emds.mean() 
+            return D_w
+        emd_args = { 'use_sinkhorn'           : not args.exact_emd,
+                     'sinkhorn_gamma'         : 1e-3,
+                     'coordinate_aware'       : args.coord_aware_emd,
+                     'image_rescaling_factor' : args.emd_downscaling,
+                     'metric'                 : 'sqeuclidean' if args.squared_euc_metric else 'euclidean' }
+        add_new(pairwise_wasserstein_distance(img, **emd_args), 8)
+
     ### </ Finished computing complexity measures /> ###
+
+    #-----------------------------------------------------------------------#
 
     # Minor checks
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
