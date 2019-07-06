@@ -11,11 +11,11 @@ from utils import *
 '''
 Usage: python img_complexity.py <input>
     where input is either a folder of images or a single image.
-By default, computes all complexity measures; if any specific ones are given, only those are used.
+By default, computes all complexity measures (except EMD); if any specific ones are given, only those are used.
 Note: operates in RGB color space.
 '''
 
-overall_desc = 'Computes some simple measure of image complexity.'
+overall_desc = 'Computes some simple measures of image complexity.'
 parser = argparse.ArgumentParser(description=overall_desc)
 # Input image
 parser.add_argument('input', type=str, help='Input: either a folder or an image')
@@ -28,9 +28,9 @@ parser.add_argument('--timing', dest='timing', action='store_true',
         help='Whether to measure and print timing on each function')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
-            description=('Controls which complexity measures to utilize. ' + 
-                         'By default, computes all complexity measures; ' + 
-                         'if any specific ones are given, only those are used.') )
+        description=('Controls which complexity measures to utilize. ' + 
+                     'By default, computes all complexity measures (except EMD); ' + 
+                     'if any specific ones are given, only those are used.') )
 group_c.add_argument('--discrete_global_shannon',   
         dest='discrete_global_shannon', action='store_const', 
         const=0, default=None,
@@ -70,14 +70,18 @@ group_c.add_argument('--pairwise_emd',
 # Algorithm parameters
 group_p = parser.add_argument_group('Algorithmic parameters',
             description='Options controlling parameters of complexity estimation algorithms')
-group_p.add_argument('--exact_emd', action='store_true', 
-            help='Specify to compute the exact EMD via linear programming, rather than the Sinkhorn approximation')
+group_p.add_argument('--sinkhorn_emd', action='store_true', 
+    help='Specify to compute the entropy-regularized Sinkhorn approximation, rather than the exact EMD via linear programming')
 group_p.add_argument('--emd_ignore_coords', action='store_true',
-            help='Specify to avoid appending local normalized spatial coordinates to patch elements')
+    help='Specify to avoid appending local normalized spatial coordinates to patch elements')
 group_p.add_argument('--squared_euc_metric', action='store_true',
-            help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
+    help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
 group_p.add_argument('--emd_downscaling', type=float, default=0.2,
-        help='Specify image downscaling factor for EMD calculations (default: 0.2)')
+    help='Specify image downscaling factor for EMD calculations (default: 0.2)')
+group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
+    help='Specify Sinkhorn entropy regularization weight coefficient (default: 0.25)')
+group_p.add_argument('--emd_coord_scaling', type=float, default=0.2,
+    help='Specify spatial coordinate scaling for EMD calculations, which controls the relative balance between pixel vs image space distance (default: 0.2)')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -152,7 +156,7 @@ def compute_complexities(impath,    # Path to input image file
         # Patchwise differential entropy options
         diff_ent_patch_size=3,      # Size of patch to unfold for differential entropy calculations
         diff_ent_window_step=2,     # Patch extraction step size for differential entropy estimation
-        max_patches_cont_DE=75000, # Max num patches for continuous diff ent estimation (resampled if violated)
+        max_patches_cont_DE=10000,  # Max num patches for continuous diff ent estimation (resampled if violated)
         # Global covariance options
         global_cov_window_size=5,   # Size of patch for global patch covariances 
         global_cov_window_step=2,   # Patch extraction step size for global patch covariance computations
@@ -160,7 +164,7 @@ def compute_complexities(impath,    # Path to input image file
         global_cov_aff_trans=False, # Whether to affinely transform the output logdet covariances
         global_cov_affine_prm=100,  # Parameter used in affine transform for global patch-wise logdet covariances
         # Pairwise EMD parameters
-        emd_window_size=32,         # Window size for pairwise EMD
+        emd_window_size=24,         # Window size for pairwise EMD
         emd_window_step=16,         # Window step for pairwise EMD
         ### Visualization Options ###
         use_gradient_image = False, # Whether to use channel-wise gradient image instead of the raw input
@@ -309,7 +313,7 @@ def compute_complexities(impath,    # Path to input image file
 
     #>> Measure 3: Local (intra-)patch covariances
     # Closely related to the distribution of L_2 distance between patches
-    # TODO vectorize over the patches? use slogdet
+    # Note: vectorize over the patches? use slogdet
     if 3 in complexities_to_use:
         @timing_decorator(args.timing)
         def local_patch_covariance(img):
@@ -470,12 +474,9 @@ def compute_complexities(impath,    # Path to input image file
                 # Index into list (N_patches x unfolded_window_size x 3)
                 patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
                 patch_display(patches_to_vis, nr, nc, show=False, title='EMD Patches', subtitles=ris)
-
-            # TODO fix overflows
-
             # Append coordinates if desired
             if coordinate_aware:
-                print('Using coordinate-aware calculations')
+                if verbose: print('\tUsing coordinate-aware calculations')
                 n_patches = patch_lists.shape[0]
                 # Refold vectorized patches back into windows
                 refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, 3)
@@ -512,7 +513,9 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tComputing pairwise EMDs')
             emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, j == i+1) 
                               for i in range(n) for j in range(i+1,n) ])
-            print(emds)
+            if verbose: 
+                _vss = ( len(emds), np.min(emds), np.max(emds), np.std(emds) )
+                print('\tNum/Min/Max/Stdev EMD values: %d/%.2f/%.2f/%.2f' % _vss)
             # Combine EMDs into a single measure via averaging
             D_w = emds.mean() 
             return D_w
@@ -521,11 +524,10 @@ def compute_complexities(impath,    # Path to input image file
         # By default, patch pixels are given local x,y, coords in [0,alpha], where alpha
         # is the coordinate scale. If alpha is too large, pixel space distance is ignored;
         # too small, intra-patch spatial distance is ignored.
-        _coord_scale = 0.1 
         if verbose: print('Computing mean inter-patch pairwise Wasserstein distance')
-        emd_args = { 'use_sinkhorn'           : not args.exact_emd,
-                     'sinkhorn_gamma'         : 1e-2,
-                     'coordinate_scale'       : _coord_scale,                      
+        emd_args = { 'use_sinkhorn'           : args.sinkhorn_emd,
+                     'sinkhorn_gamma'         : args.sinkhorn_regularizer,
+                     'coordinate_scale'       : args.emd_coord_scaling, 
                      'coordinate_aware'       : not args.emd_ignore_coords,
                      'image_rescaling_factor' : args.emd_downscaling,
                      'emd_visualize'          : args.emd_visualize,
@@ -541,8 +543,8 @@ def compute_complexities(impath,    # Path to input image file
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
 
     # Show images if needed
-    if (show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-        or args.emd_visualize):
+    if ( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
+         or args.emd_visualize):
         plt.show()
 
     ### Print (single image case) and return output ###
