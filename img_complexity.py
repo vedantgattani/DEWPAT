@@ -77,7 +77,7 @@ group_p.add_argument('--emd_ignore_coords', action='store_true',
 group_p.add_argument('--squared_euc_metric', action='store_true',
             help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
 group_p.add_argument('--emd_downscaling', type=float, default=0.2,
-            help='Specify image downscaling factor for EMD calculations')
+        help='Specify image downscaling factor for EMD calculations (default: 0.2)')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -93,6 +93,9 @@ group_v.add_argument('--show_local_covars',
 group_v.add_argument('--show_gradient_img', 
         dest='show_gradient_img', action='store_true',
         help='Whether to display the gradient magnitude image')
+group_v.add_argument('--show_emd_intermeds', 
+        dest='emd_visualize', action='store_true',
+        help='Whether to visualize intermediate computations in the EMD method')
 group_v.add_argument('--show_img',          
         dest='show_img', action='store_true',
         help='Whether to display the input image')
@@ -121,9 +124,11 @@ input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, args.w
                args.local_covars, args.grad_mag, args.diff_shannon_entropy, args.diff_shannon_entropy_patches,
                args.global_patch_covar, args.pairwise_emd ]
 if all(map(lambda k: k is None, input_vals)):
-    if args.verbose: print('Using all complexity measures')
+    if args.verbose: print('Using all complexity measures except Pairwise EMD')
+    EMD_index = 8
     S = S_all
     input_vals = list(range(len(input_vals)))
+    input_vals.remove( EMD_index )
 else:
     S = [ S_all[i] for i in range(len(input_vals)) if i in input_vals ]
     if args.verbose: print('Using:', ", ".join(S))
@@ -141,17 +146,18 @@ def compute_complexities(impath,    # Path to input image file
         # Local covariance options
         local_patch_size=16,        # Patch size for local covariance calculations
         local_covar_wstep=4,        # The step-size (stride) for the local covariance calculation
-        # Pair/pixelwise differential entropy options
-        transform_diff_ent=True,    # Whether to affinely transform the differential entropy
+        # Shared Patch and pixelwise differential entropy options
+        transform_diff_ent=False,   # Whether to affinely transform the differential entropy
         affine_param=150,           # Parameter used in affine transform for differential entropy
         # Patchwise differential entropy options
         diff_ent_patch_size=3,      # Size of patch to unfold for differential entropy calculations
         diff_ent_window_step=2,     # Patch extraction step size for differential entropy estimation
+        max_patches_cont_DE=75000, # Max num patches for continuous diff ent estimation (resampled if violated)
         # Global covariance options
         global_cov_window_size=5,   # Size of patch for global patch covariances 
         global_cov_window_step=2,   # Patch extraction step size for global patch covariance computations
         global_cov_norm_img=False,  # Whether to normalize the image into [0,1] before computing global covariances
-        global_cov_aff_trans=True,  # Whether to affinely transform the output logdet covariances
+        global_cov_aff_trans=False, # Whether to affinely transform the output logdet covariances
         global_cov_affine_prm=100,  # Parameter used in affine transform for global patch-wise logdet covariances
         # Pairwise EMD parameters
         emd_window_size=32,         # Window size for pairwise EMD
@@ -240,14 +246,15 @@ def compute_complexities(impath,    # Path to input image file
         def discrete_pixelwise_shannon_entropy(img):
             if verbose: print('Computing image entropy ' + ('(alpha masked)' if using_alpha_mask else ''))  
             if using_alpha_mask:
-                def masked_discrete_shannon(channel):
+                def masked_discrete_shannon(channel, first):
                     channel = np.copy(channel).astype(int)
-                    _fake_pixel_val = -1000
-                    channel[ alpha_mask <= 0 ] = _fake_pixel_val
+                    _fake_pixel_val, alpha_mask_threshold = -1000, 0
+                    channel[ alpha_mask <= alpha_mask_threshold ] = _fake_pixel_val
                     unique_vals, counts = np.unique(channel, return_counts=True)
                     new_counts = [ c for ii, c in enumerate(counts) if not unique_vals[ii] == _fake_pixel_val ]
+                    if first and verbose: print('\tN_pixels before & after masking:', sum(counts), '->', sum(new_counts))
                     return scipy_discrete_shannon_entropy(new_counts, base=np.e)
-                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i]) for i in range(3)])
+                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i], i==0) for i in range(3)])
             else:
                 shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(3)])
             return shannon_entropy
@@ -302,7 +309,7 @@ def compute_complexities(impath,    # Path to input image file
 
     #>> Measure 3: Local (intra-)patch covariances
     # Closely related to the distribution of L_2 distance between patches
-    # TODO vectorize over the patches
+    # TODO vectorize over the patches? use slogdet
     if 3 in complexities_to_use:
         @timing_decorator(args.timing)
         def local_patch_covariance(img):
@@ -316,8 +323,10 @@ def compute_complexities(impath,    # Path to input image file
                     if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
                     unfolded_patch = patches[:,i,j,:,:].reshape(3, wt)
                     return np.linalg.det(np.cov( unfolded_patch ))
+                if verbose: print('\tPatches Size: %s (Mask Size: %s)' % (str(patches.shape),str(alpha_over_patches.shape)) )
                 covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
             else:
+                if verbose: print('\tPatches Size:', patches.shape)
                 covariance_mat_dets = [[ np.linalg.det(np.cov( patches[:,i,j,:,:].reshape(3, wt) ))
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
@@ -361,13 +370,16 @@ def compute_complexities(impath,    # Path to input image file
         add_new(cont_pixelwise_diff_ent(img), 5)
 
     #>> Measure 6: Continuous-space Differential Shannon entropy over patches
-    # Note: this measure is not invariant to rotations of patches
+    # Note 1: this measure is not invariant to rotations of patches
+    # Note 2: for images with large swathes of identical patches, this method can suffer large increases
+    #   in computational cost (due to KD-tree construction/querying difficulties I suspect).
     if 6 in complexities_to_use:
         @timing_decorator(args.timing)
         def patchwise_diff_ent(img):
             if verbose: print('Computing continuous patch-wise differential entropy')
+            cimg = skimage.img_as_float(img) # + 1e-6 * np.random.randn(*img.shape)
             # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
-            patches_dse, ps, wt = patches_over_channels(img, diff_ent_patch_size, diff_ent_window_step, floatify=True)
+            patches_dse, ps, wt = patches_over_channels(cimg, diff_ent_patch_size, diff_ent_window_step, floatify=False)
             if verbose: print('\tPatch windows size:', patches_dse.shape)
             # Gathers unfolded patches across the image
             if using_alpha_mask:
@@ -375,6 +387,11 @@ def compute_complexities(impath,    # Path to input image file
                 patch_vectors = vectorize_masked_patches(patches_dse, alpha_over_patches, ps[1], ps[2])
             else:
                 patch_vectors = np.array([ patches_dse[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+            # Randomly resample patches to meet maximum number present
+            if max_patches_cont_DE < patch_vectors.shape[0]:
+                print('\tResampling patch vectors (original size: %s)' % str(patch_vectors.shape))
+                new_inds = np.random.choice(patch_vectors.shape[0], size=max_patches_cont_DE, replace=False)
+                patch_vectors = patch_vectors[new_inds]
             if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
             # Compute nearest neighbour-based density estimator
             patchwise_diff_entropy = EE_cont.entropy(patch_vectors, base=np.e)
@@ -382,7 +399,7 @@ def compute_complexities(impath,    # Path to input image file
             return patchwise_diff_entropy
         add_new(patchwise_diff_ent(img), 6)
 
-    #> Measure 7: Global patch-wise covariance logdet
+    #>> Measure 7: Global patch-wise covariance logdet
     # Note: this measure is also sensitive to patch orientation (e.g., rotating a patch will affect it)
     if 7 in complexities_to_use:
         @timing_decorator(args.timing)
@@ -409,30 +426,21 @@ def compute_complexities(impath,    # Path to input image file
     # TODO visualization abilities
     if 8 in complexities_to_use:
         import ot
-        @timing_decorator(args.timing) # --exact_emd --coord_aware_emd --pairwise_emd
+        @timing_decorator(args.timing)  
         def pairwise_wasserstein_distance(img, use_sinkhorn, sinkhorn_gamma, coordinate_aware, 
-                metric, image_rescaling_factor, coordinate_scale):
+                metric, image_rescaling_factor, coordinate_scale, emd_visualize):
             assert metric in ['euclidean', 'sqeuclidean'], "Underlying metric must be 'euclidean' or 'sqeuclidean'"
-            if verbose: 
-                print("Computing inter-patch Earth Mover's distances")
-                print("\tParams: sinkhorn =", use_sinkhorn, 'sinkhorn reg =', sinkhorn_gamma, 
-                        'coord aware =', coordinate_aware, 'metric =', metric, 'resize =', image_rescaling_factor)
-                print('\tImage dims', img.shape)
+            if verbose: print('\tImage dims', img.shape)
             # Resize image
             img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, multichannel=True)
             if verbose: print('\tDownscaled image dims:', img.shape)
-
-            imdisplay(img, 'Downscaled img')
-            #plt.show()
-            
+            if emd_visualize: imdisplay(img, 'Downscaled img')
             # Extract patches
             patches_emd, ps, wt = patches_over_channels(img, emd_window_size, emd_window_step, floatify=True)
             if verbose: print('\tPatches Shape', patches_emd.shape)
+            # CASE 1: using alpha mask
             if using_alpha_mask:
-                
-
-                imdisplay( alpha_mask, 'Original Mask', True )
-
+                if emd_visualize: imdisplay( alpha_mask, 'Original Mask', True )
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     alpha_mask_ds = skimage.img_as_ubyte(
@@ -441,27 +449,27 @@ def compute_complexities(impath,    # Path to input image file
                                             scale=image_rescaling_factor) )
                 alpha_mask_ds[ alpha_mask_ds >  1e-8 ] = 1
                 alpha_mask_ds[ alpha_mask_ds <= 1e-8 ] = 0
-                
-                imdisplay(alpha_mask_ds, 'Downscaled mask', True)
-                #plt.show()
-
+                if emd_visualize: imdisplay(alpha_mask_ds, 'Downscaled mask', True)
                 alpha_over_patches_emd = patches_per_channel(alpha_mask_ds, emd_window_size, emd_window_step)
-                #print(alpha_over_patches_emd)
-                #sys.exit(0)
                 patch_lists = vectorize_masked_patches(patches_emd, alpha_over_patches_emd, ps[1], ps[2], as_list=True)
+            # CASE 2: no alpha channel
             else:
-                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(3, wt).T for i in range(ps[1]) for j in range(ps[2]) ])
+                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(3, wt).T 
+                                         for i in range(ps[1]) for j in range(ps[2]) ])
             if verbose: print('\tPatch lists shape:', patch_lists.shape)
-
-            nr, nc = 5, 4
-            _random_vis = False
-            n_to_vis = nr * nc
-            if _random_vis: ris = np.random.choice(patch_lists.shape[0], size=n_to_vis, replace=False)
-            else:           ris = np.array( range(n_to_vis) )
-            assert n_to_vis <= patch_lists.shape[0], "Trying to display more patches than exist"
-            # Index into list (N_patches x unfolded_window_size x 3)
-            patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
-            patch_display(patches_to_vis, nr, nc, show=False, title='EMD Patches', subtitles=ris)
+            # Visualize (random or first few) patches
+            if emd_visualize:  
+                nr, nc, _random_vis = 5, 4, True
+                n_to_vis = nr * nc
+                if n_to_vis > patch_lists.shape[0]: 
+                    ris = np.random.choice(patch_lists.shape[0], size=n_to_vis, replace=True)
+                elif _random_vis: 
+                    ris = np.random.choice(patch_lists.shape[0], size=n_to_vis, replace=False)
+                else:             
+                    ris = np.array( range(n_to_vis) )
+                # Index into list (N_patches x unfolded_window_size x 3)
+                patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
+                patch_display(patches_to_vis, nr, nc, show=False, title='EMD Patches', subtitles=ris)
 
             # TODO fix overflows
 
@@ -469,31 +477,31 @@ def compute_complexities(impath,    # Path to input image file
             if coordinate_aware:
                 print('Using coordinate-aware calculations')
                 n_patches = patch_lists.shape[0]
+                # Refold vectorized patches back into windows
                 refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, 3)
-                
+                # Linear walk from 0 to 1
                 lin_walk = np.linspace(0.0, 1.0, emd_window_size)
+                # Expand linear walk to normalized patch coordinates, and rescale spatial values
                 patch_of_coords = np.transpose( np.array( np.meshgrid(lin_walk, lin_walk) ), (1,2,0) ) * coordinate_scale
+                # Duplicate patches for each image patch
                 coord_patches = np.repeat( patch_of_coords[ np.newaxis, :, : ], n_patches, axis=0 )
+                # Concatenate image patch pixel values with coordinate values
                 patch_lists = np.concatenate( (coord_patches, refolded_patches), axis=3 ).reshape(n_patches, wt, 5)
-
                 if verbose: print('\tPatch sizes with appended coords:', patch_lists.shape)
-                #sys.exit(1)
-                # TODO
-            # Choose solver
+            ## Choose solver ##
             if use_sinkhorn: # Entropy-regularized approximate solver
                 solver = lambda a,b,M: ot.sinkhorn2(a,b,M,sinkhorn_gamma)
             else: # Exact linear programming solver
                 solver = ot.emd2
             n = patch_lists.shape[0]
+            ## Function for computing EMD between two image patches ##
             def pair_emd(xs, xt, ind, should_print):
-                if verbose and should_print: print('\tComputing EMD %d/%d' % (ind+1,n))
+                if verbose and should_print: print('\tComputing EMD set %d/%d' % (ind+1,n))
                 # Distance matrix
                 M = ot.dist(xs, xt, metric=metric) #+ 1e-7 # Prevent M.max() from being zero
                 max_d = M.max()
-                print(max_d)
-                if max_d < 1e-5: return 0.0
+                if max_d < 1e-6: return 0.0
                 M /= max_d
-                #print(xs, xt, M)
                 # Uniform empirical delta density weightings
                 a, b = ot.unif(wt), ot.unif(wt)
                 # Compute EMD
@@ -514,13 +522,15 @@ def compute_complexities(impath,    # Path to input image file
         # is the coordinate scale. If alpha is too large, pixel space distance is ignored;
         # too small, intra-patch spatial distance is ignored.
         _coord_scale = 0.1 
-
+        if verbose: print('Computing mean inter-patch pairwise Wasserstein distance')
         emd_args = { 'use_sinkhorn'           : not args.exact_emd,
                      'sinkhorn_gamma'         : 1e-2,
                      'coordinate_scale'       : _coord_scale,                      
                      'coordinate_aware'       : not args.emd_ignore_coords,
                      'image_rescaling_factor' : args.emd_downscaling,
+                     'emd_visualize'          : args.emd_visualize,
                      'metric'                 : 'sqeuclidean' if args.squared_euc_metric else 'euclidean' }
+        if verbose: print('\tParams', emd_args)
         add_new(pairwise_wasserstein_distance(img, **emd_args), 8)
 
     ### </ Finished computing complexity measures /> ###
@@ -531,7 +541,8 @@ def compute_complexities(impath,    # Path to input image file
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
 
     # Show images if needed
-    if show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img:
+    if (show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
+        or args.emd_visualize):
         plt.show()
 
     ### Print (single image case) and return output ###
