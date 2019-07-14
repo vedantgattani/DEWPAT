@@ -41,6 +41,7 @@ def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None)
 ### Patch extraction helpers ###
 
 def patches_over_channels(img, patch_size, window_step, return_meta=True, floatify=False):
+    # C x H x W x Px x Py = num_channels x n_patches_vert x n_patches_horz x patch_H x patch_W
     if floatify: 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -116,6 +117,27 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
             gradient_img = skimage.img_as_ubyte(gradient_img)
     return gradient_img
 
+def gaussian_blur(image, sigma):
+    '''
+    Performs Gaussian blurring on the input with standard deviation sigma.
+    '''
+    return np.clip(filters.gaussian(image, sigma=sigma, multichannel=True), 0.0, 1.0)
+
+def to_perceptual_greyscale(img):
+    from skimage.color import rgb2gray
+    new_img = dupe_channel( rgb2gray(img) )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        new_img = skimage.img_as_ubyte( new_img )
+    return new_img
+
+def to_avg_greyscale(img):
+    new_img = dupe_channel( np.clip(np.mean(img / 255, axis=-1), 0, 1) )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        new_img = skimage.img_as_ubyte( new_img )
+    return new_img
+
 ### Timing helpers ###
 
 # Note: calling this as a decorator actually runs it, so that 
@@ -132,5 +154,16 @@ def timing_decorator(do_timing):
         else:
             return wrapped_func
     return decorator
+
+### Array Helpers ###
+
+def dupe_channel(c):
+    return combine_channels([c, c, c])
+
+def combine_channels(channels):
+    return np.stack( channels, axis = -1 )
+
+
+
 
 #

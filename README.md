@@ -37,6 +37,14 @@ Most measures are able to account for the presence of an alpha channel mask.
 For instance, in the patch-based estimators, any patch with a masked pixel is ignored. 
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
+#### Preprocessing
+
+There are a few preprocessing options:
+
+- **Blurring**: passing `--blur 5`, for instance, will low-pass filter the image with a Gaussian of standard deviation 5.
+
+- **Greyscale**: passing `--greyscale human` will convert the image to greyscale via channel weightings based on human perceptual weightings, while `--greyscale avg` will use uniform weights (average over channels). Important: note that the determinant of the covariance becomes degenerate (singular) for a scalar image (since the channels have no covariance in this case); therefore *trace* rather than *determinant* is taken in those cases.
+
 #### Examples
 
 - Compute all the complexity measures for a single input image, as well as visualizing the contributions of each pixel for the local pixelwise entropy measure:
@@ -94,6 +102,7 @@ Estimates the mean local intra-patch covariance over the image, written
 ```math
 \mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\left( \det\left(\widehat{C}(p)\right) + 1 \right)
 ```
+Note that trace instead of determinant is used in the greyscale case.
 
 ### Average Gradient Magnitude
 
@@ -123,6 +132,7 @@ Computes the log-determinant of the global covariance matrix over patches in the
 ```math
 \mathcal{C}_{G}(I) = \log\left( \det\left( \widehat{C}(P) \right) \right)
 ```
+Note that trace instead of determinant is used in the greyscale case.
 
 ### Mean Pairwise Wasserstein Distance
 

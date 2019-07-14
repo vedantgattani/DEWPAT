@@ -26,6 +26,11 @@ parser.add_argument('--ignore_alpha', dest='ignore_alpha', action='store_true',
         help='Whether to ignore the alpha mask channel')
 parser.add_argument('--timing', dest='timing', action='store_true',
         help='Whether to measure and print timing on each function')
+# Preprocessing (resize, blur, greyscale, etc...)
+parser.add_argument('--blur', type=float, default=0.0,
+    help='Specify Gaussian blur standard deviation applied to the image (default: none)')
+parser.add_argument('--greyscale', type=str, default="none",
+    help='Specify greyscale conversion: one of "human", "avg", or "none". (default: none)')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
         description=('Controls which complexity measures to utilize. ' + 
@@ -148,8 +153,8 @@ def compute_complexities(impath,    # Path to input image file
         # Local entropy options
         local_entropy_disk_size=24, # Patch size for local entropy calculations
         # Local covariance options
-        local_patch_size=16,        # Patch size for local covariance calculations
-        local_covar_wstep=4,        # The step-size (stride) for the local covariance calculation
+        local_patch_size=20,        # Patch size for local covariance calculations
+        local_covar_wstep=5,        # The step-size (stride) for the local covariance calculation
         # Shared Patch and pixelwise differential entropy options
         transform_diff_ent=False,   # Whether to affinely transform the differential entropy
         affine_param=150,           # Parameter used in affine transform for differential entropy
@@ -158,7 +163,7 @@ def compute_complexities(impath,    # Path to input image file
         diff_ent_window_step=2,     # Patch extraction step size for differential entropy estimation
         max_patches_cont_DE=10000,  # Max num patches for continuous diff ent estimation (resampled if violated)
         # Global covariance options
-        global_cov_window_size=5,   # Size of patch for global patch covariances 
+        global_cov_window_size=10,  # Size of patch for global patch covariances 
         global_cov_window_step=2,   # Patch extraction step size for global patch covariance computations
         global_cov_norm_img=False,  # Whether to normalize the image into [0,1] before computing global covariances
         global_cov_aff_trans=False, # Whether to affinely transform the output logdet covariances
@@ -200,6 +205,10 @@ def compute_complexities(impath,    # Path to input image file
     # Read original image
     if verbose: print('Reading image:', impath)
     img = skimage.io.imread(impath)
+    # Downscale image, if desired
+    orig_img_prescaled = img # save for use with Wasserstein?
+    # TODO handle Wasserstein downscaling? Just have this apply to others, and the Wasserstein one be handled by its own flag only? That way, BOTH flags could specify DIFFERENT image sizes for the different complexities.
+    
     # Handle alpha transparency
     n_channels = img.shape[2]
     alpha_channel = img[:,:,3] if n_channels == 4 else None
@@ -215,6 +224,28 @@ def compute_complexities(impath,    # Path to input image file
     if args.ignore_alpha:
         using_alpha_mask = False
         alpha_mask, alpha_channel = None, None
+    # Convert image to greyscale, if desired
+    is_scalar = False
+    gs_type = args.greyscale.lower()
+    assert gs_type in ["none", "human", "avg"], 'Use one of --greyscale none/avg/human'
+    if gs_type == 'human':
+        if verbose: print("Greyscaling image (perceptual)")
+        img = to_perceptual_greyscale(img)
+        is_scalar = True
+    elif gs_type == 'avg':
+        if verbose: print("Greyscaling image (channel mean)")
+        img = to_avg_greyscale(img)
+        is_scalar = True
+    # Blur image, if desired
+    blur_sigma = args.blur
+    assert blur_sigma >= 0.0, "Untenable blur kernel width"
+    if blur_sigma > 1e-5:
+        if verbose: print("\tBlurring with sigma =", blur_sigma)
+        bb = gaussian_blur(img, blur_sigma)
+        #print(bb.max(), bb.min())
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            img = skimage.img_as_ubyte( gaussian_blur(img, blur_sigma) )
     # Switch to channel-wise gradient magnitude image if desired
     if use_gradient_image:
         if verbose: print('Using gradient magnitude image')
@@ -305,7 +336,8 @@ def compute_complexities(impath,    # Path to input image file
                 imdisplay(avg_fourier_image, 'Fourier Transform', colorbar=True, cmap='viridis')
                 imdisplay(index_grid_cen, 'Fourier-space distance weights', colorbar=True, cmap='gray')
                 # Avoid loss of phase information in order to view image (but note it's ignored in the metric)
-                reweighted_shifted_fourier_img_wp = (np.mean(shifted_fourier_images, axis=0) * index_grid_cen) / np.sum(index_grid_cen)
+                mean_shifted_fourier_images = np.mean(shifted_fourier_images, axis=0)
+                reweighted_shifted_fourier_img_wp = (mean_shifted_fourier_images * index_grid_cen) / np.sum(index_grid_cen)
                 real_space_reweighted_img = np.abs( fp.ifft2( np.fft.ifftshift(reweighted_shifted_fourier_img_wp)) )
                 imdisplay(real_space_reweighted_img, 'Reweighted real-space image', colorbar=True, cmap='hot')
             return fourier_weighted_mean_coef
@@ -318,6 +350,10 @@ def compute_complexities(impath,    # Path to input image file
         @timing_decorator(args.timing)
         def local_patch_covariance(img):
             if verbose: print('Computing local patch covariances')
+            # In the greyscale case, use trace instead of determinant
+            if is_scalar: scalarize = np.trace
+            else:         scalarize = np.linalg.det
+            # patches \in C x H x W x Px x Py; ps = patches.shape; wt = window length squared
             patches, ps, wt = patches_over_channels(img, local_patch_size, local_covar_wstep)
             # Per patch: (1) extracts window, (2) unfolds it into pixel values, (3) computes the covariance
             if using_alpha_mask:
@@ -326,12 +362,16 @@ def compute_complexities(impath,    # Path to input image file
                     mask_patch = alpha_over_patches[i,j,:,:]
                     if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
                     unfolded_patch = patches[:,i,j,:,:].reshape(3, wt)
-                    return np.linalg.det(np.cov( unfolded_patch ))
+                    return scalarize(np.cov( unfolded_patch ))
                 if verbose: print('\tPatches Size: %s (Mask Size: %s)' % (str(patches.shape),str(alpha_over_patches.shape)) )
                 covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
             else:
                 if verbose: print('\tPatches Size:', patches.shape)
-                covariance_mat_dets = [[ np.linalg.det(np.cov( patches[:,i,j,:,:].reshape(3, wt) ))
+                #print( "Patches", [ [ patches[:,i,j,:,:].reshape(3,wt) for j in range(ps[2]) ] for i in range(ps[1]) ] )
+                #print( "covs", [ [ np.cov( patches[:,i,j,:,:].reshape(3, wt) )
+                #                        for j in range(ps[2]) ] for i in range(ps[1]) ] )
+                #sys.exit(0)
+                covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(3, wt) ))
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
@@ -393,7 +433,7 @@ def compute_complexities(impath,    # Path to input image file
                 patch_vectors = np.array([ patches_dse[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
             # Randomly resample patches to meet maximum number present
             if max_patches_cont_DE < patch_vectors.shape[0]:
-                print('\tResampling patch vectors (original size: %s)' % str(patch_vectors.shape))
+                if verbose: print('\tResampling patch vectors (original size: %s)' % str(patch_vectors.shape))
                 new_inds = np.random.choice(patch_vectors.shape[0], size=max_patches_cont_DE, replace=False)
                 patch_vectors = patch_vectors[new_inds]
             if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
@@ -410,6 +450,7 @@ def compute_complexities(impath,    # Path to input image file
         def patchwise_global_covar(img):
             if verbose: print('Computing global patch-wise covariance')
             # Patches: channels x patch_index_X x patch_index_Y x coord_in_patch_X x coord_in_patch_Y
+            # I.e., C x N_patches_H x N_patches_V x Window_size_H x Window_size_V
             patchesgc, ps, wt = patches_over_channels(img, global_cov_window_size, global_cov_window_step, floatify=global_cov_norm_img)
             if verbose: print('\tPatch windows size:', patchesgc.shape)
             # Gathers unfolded patches across the image
@@ -421,7 +462,12 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
             # Compute covariance matrix of the unfolded vectors
             global_cov = np.cov( patch_vectors.T )
-            sign, patchwise_covar_logdet = np.linalg.slogdet(global_cov) 
+            def _strace(c):
+                t = np.trace(c)
+                return np.sign(t), t
+            scalarizer = (lambda c: np.linalg.slogdet(c)) if not is_scalar else (lambda c: _strace(c))
+            sign, patchwise_covar_logdet = scalarizer(global_cov) 
+            #patchwise_covar_logdet = np.log( np.linalg.det(global_cov) + 1.0 )
             if global_cov_aff_trans: patchwise_covar_logdet = _oneparam_affine(patchwise_covar_logdet, global_cov_affine_prm)
             return patchwise_covar_logdet
         add_new(patchwise_global_covar(img), 7)
