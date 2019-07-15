@@ -210,8 +210,6 @@ def compute_complexities(impath,    # Path to input image file
     img = skimage.io.imread(impath)
     n_channels = img.shape[2]
     # Downscale image, if desired
-    #orig_img_prescaled = img # save for use with Wasserstein
-    # TODO handle Wasserstein downscaling? Just have this apply to others, and the Wasserstein one be handled by its own flag only? That way, BOTH flags could specify DIFFERENT image sizes for the different complexities.
     resize_factor_main = args.resize
     assert resize_factor_main > 0.0, "--resize must be positive"
     running_resize = False
@@ -224,16 +222,12 @@ def compute_complexities(impath,    # Path to input image file
         if verbose: print("Resized dims:", img.shape)
         if n_channels == 4:
             alpha_layer = img[:,:,3]
-            #print('alpha min/max', np.min(alpha_layer), np.max(alpha_layer))
             if False: # Display 
-                #imdisplay(img[:,:,3], 'alpha_layer', colorbar=True, cmap='plasma')
                 imdisplay(alpha_layer, 'alpha_layer', colorbar=True, cmap='plasma')
                 imdisplay(img[:,:,0:3], 'layers', colorbar=True, cmap='plasma')
                 plt.show()
             alpha_layer[ alpha_layer >  128 ] = 255
             alpha_layer[ alpha_layer <= 128 ] = 0
-            #print('img min/max', np.min(img), np.max(img))
-            #print('alpha min/max', np.min(alpha_layer), np.max(alpha_layer))
     # Handle alpha transparency
     alpha_channel = img[:,:,3] if n_channels == 4 else None
     using_alpha_mask = not (alpha_channel is None)
