@@ -138,6 +138,12 @@ def to_avg_greyscale(img):
         new_img = skimage.img_as_ubyte( new_img )
     return new_img
 
+def conv_to_ubyte(img):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        img = skimage.img_as_ubyte( img )
+    return img
+
 ### Timing helpers ###
 
 # Note: calling this as a decorator actually runs it, so that 

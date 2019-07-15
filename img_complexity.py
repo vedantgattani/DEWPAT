@@ -31,6 +31,8 @@ parser.add_argument('--blur', type=float, default=0.0,
     help='Specify Gaussian blur standard deviation applied to the image (default: none)')
 parser.add_argument('--greyscale', type=str, default="none",
     help='Specify greyscale conversion: one of "human", "avg", or "none". (default: none)')
+parser.add_argument('--resize', type=float, default=1.0,
+    help='Specify scalar resizing value. E.g., 0.5 halves the image size; 2 doubles it. (default: 1)')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
         description=('Controls which complexity measures to utilize. ' + 
@@ -138,6 +140,7 @@ if all(map(lambda k: k is None, input_vals)):
     S = S_all
     input_vals = list(range(len(input_vals)))
     input_vals.remove( EMD_index )
+    S.remove( S[EMD_index] )
 else:
     S = [ S_all[i] for i in range(len(input_vals)) if i in input_vals ]
     if args.verbose: print('Using:', ", ".join(S))
@@ -205,12 +208,33 @@ def compute_complexities(impath,    # Path to input image file
     # Read original image
     if verbose: print('Reading image:', impath)
     img = skimage.io.imread(impath)
-    # Downscale image, if desired
-    orig_img_prescaled = img # save for use with Wasserstein?
-    # TODO handle Wasserstein downscaling? Just have this apply to others, and the Wasserstein one be handled by its own flag only? That way, BOTH flags could specify DIFFERENT image sizes for the different complexities.
-    
-    # Handle alpha transparency
     n_channels = img.shape[2]
+    # Downscale image, if desired
+    #orig_img_prescaled = img # save for use with Wasserstein
+    # TODO handle Wasserstein downscaling? Just have this apply to others, and the Wasserstein one be handled by its own flag only? That way, BOTH flags could specify DIFFERENT image sizes for the different complexities.
+    resize_factor_main = args.resize
+    assert resize_factor_main > 0.0, "--resize must be positive"
+    running_resize = False
+    if abs(resize_factor_main - 1.0) > 1e-4:
+        running_resize = True
+        if verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
+        img = skimage.transform.rescale(img, scale=resize_factor_main, 
+                anti_aliasing=True, multichannel=True)
+        img = conv_to_ubyte(img)
+        if verbose: print("Resized dims:", img.shape)
+        if n_channels == 4:
+            alpha_layer = img[:,:,3]
+            #print('alpha min/max', np.min(alpha_layer), np.max(alpha_layer))
+            if False: # Display 
+                #imdisplay(img[:,:,3], 'alpha_layer', colorbar=True, cmap='plasma')
+                imdisplay(alpha_layer, 'alpha_layer', colorbar=True, cmap='plasma')
+                imdisplay(img[:,:,0:3], 'layers', colorbar=True, cmap='plasma')
+                plt.show()
+            alpha_layer[ alpha_layer >  128 ] = 255
+            alpha_layer[ alpha_layer <= 128 ] = 0
+            #print('img min/max', np.min(img), np.max(img))
+            #print('alpha min/max', np.min(alpha_layer), np.max(alpha_layer))
+    # Handle alpha transparency
     alpha_channel = img[:,:,3] if n_channels == 4 else None
     using_alpha_mask = not (alpha_channel is None)
     if using_alpha_mask:
@@ -571,11 +595,12 @@ def compute_complexities(impath,    # Path to input image file
         # is the coordinate scale. If alpha is too large, pixel space distance is ignored;
         # too small, intra-patch spatial distance is ignored.
         if verbose: print('Computing mean inter-patch pairwise Wasserstein distance')
+        emd_resize = 1.0 if running_resize else args.emd_downscaling
         emd_args = { 'use_sinkhorn'           : args.sinkhorn_emd,
                      'sinkhorn_gamma'         : args.sinkhorn_regularizer,
                      'coordinate_scale'       : args.emd_coord_scaling, 
                      'coordinate_aware'       : not args.emd_ignore_coords,
-                     'image_rescaling_factor' : args.emd_downscaling,
+                     'image_rescaling_factor' : emd_resize,
                      'emd_visualize'          : args.emd_visualize,
                      'metric'                 : 'sqeuclidean' if args.squared_euc_metric else 'euclidean' }
         if verbose: print('\tParams', emd_args)
