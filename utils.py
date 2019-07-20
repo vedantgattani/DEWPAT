@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
+from mpl_toolkits.mplot3d import Axes3D, axes3d
 
 ### Visualization helpers ###
 
@@ -37,6 +38,67 @@ def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None)
     plt.tight_layout(True)
     if not title is None: fig.canvas.set_window_title(title)
     if show: plt.show()
+
+def histogram3dplot(h, e, fig=None, verbose=True):
+    """
+    Visualize a 3D histogram
+
+    Adapted from:
+        https://staff.fnwi.uva.nl/r.vandenboomgaard/IPCV20162017/LectureNotes/IP/Images/ImageHistograms.html
+
+    Args:
+        h: histogram array of shape (M, N, O)
+        e: list of bin edge arrays (for R, G and B)
+    """
+    M, N, O = h.shape
+    idxR = np.arange(M)
+    idxG = np.arange(N)
+    idxB = np.arange(O)
+
+    R, G, B = np.meshgrid(idxR, idxG, idxB)
+    a = np.diff(e[0])[0]
+    b = a/2
+    R = a * R + b
+
+    a = np.diff(e[1])[0]
+    b = a/2
+    G = a * G + b
+
+    a = np.diff(e[2])[0]
+    b = a/2
+    B = a * B + b
+
+    cord = 'C'
+    flat_R, flat_G, flat_B = (R.flatten(order=cord), G.flatten(order=cord), B.flatten(order=cord))
+
+    if verbose: print('r,g,b shapes', R.shape, G.shape, B.shape)
+
+    h = h / np.sum(h)
+    flat_h = h.flatten(order='F')
+
+    if verbose: print('h shape', h.shape)
+
+    if fig is not None:
+        f = fig
+        #f = plt.figure(fig)
+    else:
+        f = plt.gcf()
+    ax = f.add_subplot(111, projection='3d')     
+    mxbins = np.array([M,N,O]).max()
+    if verbose: print('mxbins', mxbins)
+
+    # Note: somehow the values have been permuted. I suspect it is due to the flattening
+    # procedures. This appears to give correct results, nevertheless. 
+    # The permuting has caused R->B, B->G, G->R; hence we cycle their order.
+
+    colors = np.vstack( (flat_B, flat_R, flat_G) ).T / 255
+    if verbose: print('color shape', colors.shape)
+
+    ax.scatter(flat_B, flat_R, flat_G, s=flat_h*(256/mxbins)**3/2, c=colors)
+
+    ax.set_xlabel('Red')
+    ax.set_ylabel('Green')
+    ax.set_zlabel('Blue')
 
 ### Patch extraction helpers ###
 
