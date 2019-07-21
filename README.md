@@ -2,11 +2,11 @@
 
 This repo contains implementations of several simple measures of image complexity,
 including ones based on frequency content, information entropy, spatial derivatives, and differences in local statistical moments.
-Some basic statistical visualization methods are also present.
+Some basic visualization methods are also present.
 
 ## Requirements
 
-Requires: scikit-image, numpy, matplotlib, and scipy.
+Requires: scikit-image, numpy, matplotlib, scikit-learn, and scipy.
 An easy way to obtain them is via the conda environment specified in `env.yaml`.
 
 Create environment: `conda env create -f env.yaml`.
@@ -193,9 +193,12 @@ $`C:[0,1]\rightarrow[0,1]^3`$.
 It can also write the histogram values of the 1D ("manually unfolded") histogram to a file 
 via `--write_1d_histo_vals --output_file histo_output.csv`.
 
+For complete details, run `python vis.py --help`.
+
 ## TODO
 
 - Operations on scalar images are not optimized
+- EMD method likely has a bug in the alpha handling. Having a separate resizing argument is also not ideal.
 
 ## Acknowledgements
 
