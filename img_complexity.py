@@ -190,7 +190,7 @@ def compute_complexities(impath,    # Path to input image file
         emd_window_size=24,         # Window size for pairwise EMD
         emd_window_step=16,         # Window step for pairwise EMD
         # Mean and moment distances parameters
-        pw_mnt_dist_nonOL_WS=(4,3), # Non-overlapping patches to segment the image into for moment distances
+        pw_mnt_dist_nonOL_WS=(3,4), # Non-overlapping patches to segment the image into for moment distances
         ### Visualization Options ###
         use_gradient_image = False, # Whether to use channel-wise gradient image instead of the raw input
         show_fourier_image = False, # Whether to display Fourier-based images
@@ -654,11 +654,16 @@ def compute_complexities(impath,    # Path to input image file
     #--------------------------------------------------------------------------------------------------------------------#
 
     if 10 in complexities_to_use:
+        # Don't display the same patches twice
+        if 9 in complexities_to_use: 
+            show_pw_mnt_ptchs2 = False
+        else:
+            show_pw_mnt_ptchs2 = show_pw_mnt_ptchs
         if verbose: print('Computing patch-wise distances between moments')
         @timing_decorator(args.timing)
         def patchwise_moment_dist(img, mask):
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS, 
-                    gamma_cov_weight=1, display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
+                    gamma_cov_weight=1, display_intermeds=show_pw_mnt_ptchs2, verbose=verbose)
         add_new(patchwise_moment_dist(img, mask_pwmm), 10)
 
     ### </ Finished computing complexity measures /> ###
