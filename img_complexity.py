@@ -74,6 +74,14 @@ group_c.add_argument('--pairwise_emd',
         dest='pairwise_emd', action='store_const', 
         const=8, default=None,
         help='Whether to use the pairwise Wasserstein distance across image patches')
+group_c.add_argument('--pairwise_mean_distances',                  
+        dest='pairwise_mean_distances', action='store_const', 
+        const=9, default=None,
+        help='Whether to use the pairwise distance between mean pixel values across image patches')
+group_c.add_argument('--pairwise_moment_distances',                  
+        dest='pairwise_moment_distances', action='store_const', 
+        const=10, default=None,
+        help='Whether to use the pairwise distances between first two moments (mean and covariance) across image patches')
 # Algorithm parameters
 group_p = parser.add_argument_group('Algorithmic parameters',
             description='Options controlling parameters of complexity estimation algorithms')
@@ -101,6 +109,9 @@ group_v.add_argument('--show_local_ents',
 group_v.add_argument('--show_local_covars', 
         dest='show_local_covars', action='store_true',
         help='Whether to display an image of the local covariances')
+group_v.add_argument('--show_pw_mnt_ptchs', 
+        dest='show_pw_mnt_ptchs', action='store_true',
+        help='Whether to display an intermediate blocks of the pairwise moment comparator methods')
 group_v.add_argument('--show_gradient_img', 
         dest='show_gradient_img', action='store_true',
         help='Whether to display the gradient magnitude image')
@@ -129,11 +140,15 @@ S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
           'Frequency-weighted Mean Coefficient', 'Local Patch Covariance',
           'Average Gradient Magnitude', 'Pixelwise Differential Entropy',
           'Patchwise Differential Entropy', 'Global Patch Covariance',
-          'Pairwise Wasserstein Distance']
+          'Pairwise Wasserstein Distance', 'Pairwise Mean Distances',
+          'Pairwise Moment Distances']
 # Discern which measures to use
-input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, args.weighted_fourier,
-               args.local_covars, args.grad_mag, args.diff_shannon_entropy, args.diff_shannon_entropy_patches,
-               args.global_patch_covar, args.pairwise_emd ]
+input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, 
+               args.weighted_fourier, args.local_covars, 
+               args.grad_mag, args.diff_shannon_entropy, 
+               args.diff_shannon_entropy_patches, args.global_patch_covar, 
+               args.pairwise_emd, args.pairwise_mean_distances,
+               args.pairwise_moment_distances ]
 if all(map(lambda k: k is None, input_vals)):
     if args.verbose: print('Using all complexity measures except Pairwise EMD')
     EMD_index = 8
@@ -174,12 +189,15 @@ def compute_complexities(impath,    # Path to input image file
         # Pairwise EMD parameters
         emd_window_size=24,         # Window size for pairwise EMD
         emd_window_step=16,         # Window step for pairwise EMD
+        # Mean and moment distances parameters
+        pw_mnt_dist_nonOL_WS=(4,3), # Non-overlapping patches to segment the image into for moment distances
         ### Visualization Options ###
         use_gradient_image = False, # Whether to use channel-wise gradient image instead of the raw input
         show_fourier_image = False, # Whether to display Fourier-based images
         show_locent_image = False,  # Whether to display the local entropies
         show_loccov_image = False,  # Whether to display the local covariances
         show_gradient_img = False,  # Shows 2nd derivatives if use_gradient_image is true
+        show_pw_mnt_ptchs = False,  # Show the patches used to compute the moments (for measures 9 and 10)
         display_image = False,      # Whether to display the image under consideration
         verbose=False               # Whether to print verbosely when running
     ):
@@ -313,6 +331,8 @@ def compute_complexities(impath,    # Path to input image file
             return shannon_entropy
         add_new(discrete_pixelwise_shannon_entropy(img), 0)
 
+    #--------------------------------------------------------------------------------------------------------------------#
+
     #>> Measure 1: Averaged channel-wise local entropy
     if 1 in complexities_to_use:
         @timing_decorator(args.timing)
@@ -328,6 +348,8 @@ def compute_complexities(impath,    # Path to input image file
             if show_locent_image: imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma')
             return np.mean(le_img)
         add_new(channelwise_local_entropies(img), 1)
+
+    #--------------------------------------------------------------------------------------------------------------------#
 
     #>> Measure 2: High frequency content via weighted average
     # Note: masks, even if present, are not used here, since we would be getting irregular domain harmonics rather than Fourier coefs
@@ -360,6 +382,8 @@ def compute_complexities(impath,    # Path to input image file
                 imdisplay(real_space_reweighted_img, 'Reweighted real-space image', colorbar=True, cmap='hot')
             return fourier_weighted_mean_coef
         add_new(mean_weighted_fourier_coef(img), 2)
+
+    #--------------------------------------------------------------------------------------------------------------------#
 
     #>> Measure 3: Local (intra-)patch covariances
     # Closely related to the distribution of L_2 distance between patches
@@ -397,6 +421,8 @@ def compute_complexities(impath,    # Path to input image file
             return np.mean(local_covar_img)
         add_new(local_patch_covariance(img), 3)
 
+    #--------------------------------------------------------------------------------------------------------------------#
+
     #>> Measure 4: Average gradient magnitude of the input
     # Note: this computes the second-order derivatives if we're using a gradient image
     # Note: even if we mask the gradient image, the gradient on the boundary will still be high
@@ -412,6 +438,8 @@ def compute_complexities(impath,    # Path to input image file
                 grad_img[alpha_mask <= 0] = 0
             return np.mean(grad_img)
         add_new(avg_gradient_norm(img), 4)
+
+    #--------------------------------------------------------------------------------------------------------------------#
 
     #>> Measure 5: Continuous-space Differential Shannon entropy across pixels
     if 5 in complexities_to_use:
@@ -430,6 +458,8 @@ def compute_complexities(impath,    # Path to input image file
             if transform_diff_ent: pixelwise_diff_entropy = _oneparam_affine(pixelwise_diff_entropy, affine_param)
             return pixelwise_diff_entropy
         add_new(cont_pixelwise_diff_ent(img), 5)
+
+    #--------------------------------------------------------------------------------------------------------------------#
 
     #>> Measure 6: Continuous-space Differential Shannon entropy over patches
     # Note 1: this measure is not invariant to rotations of patches
@@ -461,6 +491,8 @@ def compute_complexities(impath,    # Path to input image file
             return patchwise_diff_entropy
         add_new(patchwise_diff_ent(img), 6)
 
+    #--------------------------------------------------------------------------------------------------------------------#
+
     #>> Measure 7: Global patch-wise covariance logdet
     # Note: this measure is also sensitive to patch orientation (e.g., rotating a patch will affect it)
     if 7 in complexities_to_use:
@@ -490,8 +522,10 @@ def compute_complexities(impath,    # Path to input image file
             return patchwise_covar_logdet
         add_new(patchwise_global_covar(img), 7)
 
+    #--------------------------------------------------------------------------------------------------------------------#
+
     #> Measure 8: Pairwise patch EMD (i.e., mean pairwise Wasserstein distance over patches)
-    # TODO visualization abilities
+    # TODO bugged? doesnt remove alpha masked patches
     if 8 in complexities_to_use:
         import ot
         @timing_decorator(args.timing)  
@@ -600,16 +634,43 @@ def compute_complexities(impath,    # Path to input image file
         if verbose: print('\tParams', emd_args)
         add_new(pairwise_wasserstein_distance(img, **emd_args), 8)
 
+    #--------------------------------------------------------------------------------------------------------------------#    
+
+    if using_alpha_mask:
+        mask_pwmm = alpha_mask
+    else:
+        mask_pwmm = np.ones((h,w), dtype=int)
+
+    # TODO ok for scalar images?
+
+    if 9 in complexities_to_use:
+        if verbose: print('Computing patch-wise distances between means')
+        @timing_decorator(args.timing)
+        def patchwise_mean_dist(img, mask):
+            return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS,
+                    gamma_cov_weight=0, display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
+        add_new(patchwise_mean_dist(img, mask_pwmm), 9)
+
+    #--------------------------------------------------------------------------------------------------------------------#
+
+    if 10 in complexities_to_use:
+        if verbose: print('Computing patch-wise distances between moments')
+        @timing_decorator(args.timing)
+        def patchwise_moment_dist(img, mask):
+            return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS, 
+                    gamma_cov_weight=1, display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
+        add_new(patchwise_moment_dist(img, mask_pwmm), 10)
+
     ### </ Finished computing complexity measures /> ###
 
-    #-----------------------------------------------------------------------#
+    #######################################################################################################################
 
     # Minor checks
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
 
     # Show images if needed
     if ( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-         or args.emd_visualize):
+         or args.emd_visualize or show_pw_mnt_ptchs):
         plt.show()
 
     ### Print (single image case) and return output ###
@@ -642,6 +703,7 @@ args_d = { "verbose"            : args.verbose,
            "show_fourier_image" : True if args.show_all else args.show_fourier,
            "show_gradient_img"  : True if args.show_all else args.show_gradient_img,
            "show_locent_image"  : True if args.show_all else args.show_locents,
+           "show_pw_mnt_ptchs"  : True if args.show_all else args.show_pw_mnt_ptchs,
            "show_loccov_image"  : True if args.show_all else args.show_local_covars,
            "display_image"      : True if args.show_all else args.show_img }
 grad_and_orig = args.use_grad_too # Preparations if doing both gradient and original image

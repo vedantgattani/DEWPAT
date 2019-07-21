@@ -1,10 +1,12 @@
-import os, sys, numpy as np, skimage, argparse, warnings
+import os, sys, numpy as np, skimage, argparse, warnings, matplotlib
 from skimage.util import view_as_windows
 import matplotlib.pyplot as plt
 from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D, axes3d
+from skimage import io
+
 
 ### Visualization helpers ###
 
@@ -15,27 +17,36 @@ def imdisplay(inim, title, colorbar=False, cmap=None):
     plt.title(title)
     if colorbar: fig.colorbar(imm)
 
-def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None):
+def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None, hide_axes=False):
     # patches must be n_patches x H x W x C 
     N = nrows * ncols
-    assert N == patches.shape[0] and len(subtitles) == N
+    N_dims = len(patches.shape)
+    assert N == patches.shape[0] 
+    if not subtitles is None: assert len(subtitles) == N
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols)
     for i, axi in enumerate(ax.flat):
         # i runs from 0 to (nrows*ncols-1)
         # axi is equivalent with ax[rowid][colid]
         #img = np.random.randint(10, size=(h,w))
-        axi.imshow(patches[i,:,:,:])
+        if N_dims == 4:
+            axi.imshow(patches[i,:,:,:])
+        else: # Mask case
+            axi.imshow(patches[i,:,:], vmin=0, vmax=1)
         #axi.imshow(img, alpha=0.25)
         # get indices of row/column
         rowid = i // ncols
         colid = i % ncols
         if subtitles is None:
         # write row/col indices as axes' title for identification
-            axi.set_title( ('%d' % i) + "-R"+str(rowid)+"C"+str(colid))
+            axi.set_title("R"+str(rowid)+"C"+str(colid))
         else:
             subtitle = subtitles[i]
             axi.set_title( str(subtitle) )
-    plt.tight_layout(True)
+        if hide_axes:
+            axi.get_xaxis().set_visible(False)
+            axi.get_yaxis().set_visible(False)
+            #plt.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
+    plt.tight_layout(pad=1.5, w_pad=0.1, h_pad=1.0)
     if not title is None: fig.canvas.set_window_title(title)
     if show: plt.show()
 
@@ -231,7 +242,259 @@ def dupe_channel(c):
 def combine_channels(channels):
     return np.stack( channels, axis = -1 )
 
+### Colour Helpers ###
 
+def color_multiinterpolator(color_list, times=None):
+    '''
+    Produces a color function f : [0,1] -> R^3 that linearly interpolates over color_list.
+    Color_list contains a list of color arrays, with length n.
+    times, if given, must be of length n-2 and each entry has 0 < t_i < 1
+    '''
+    n = len(color_list)
+    if n == 2: return Color.color_biinterpolator(color_list[0], color_list[1])
+    if times is None: times = np.linspace(0.0, 1.0, num=n)[1:-1]
+    if not times is None:
+        assert len(times) + 2 == n, 'Times length mismatch'
+        assert all( (t >= 0.0 and t <= 1.0) for t in times ), 'Untenable times choices'
+        times = [0.0] + list(times) + [1.0]
+    # Now generate the interpolator function
+    col_list = [ (t, c) for c, t in zip(color_list, times) ]
+    return matplotlib.colors.LinearSegmentedColormap.from_list("wtf", col_list)
+
+def color_biinterpolator(c1, c2):
+        return lambda t: c2*t + (1-t)*c1
+
+def from_ints(r,g,b):
+    return np.array([r, g, b, 255]) / 255.0
+
+
+def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None, verbose=True,
+                                        manifold_learning_options={}, colors=None):
+    '''
+    Given a set of n-dimensional vectors, dimensionally reduce the set to 2D and plot it.
+    i.e. V is an m x n matrix.
+    We can color based on the point labels if given. Must be a list of
+    '''
+    method = method.lower()
+    methods = ['pca', 'tsne', 'isomap', 'lle']
+    assert method in methods, 'Method must be one of' + str(methods)
+    if not point_labels is None:
+        assert len(point_labels) == len(vectors), "Vectors-to-labels mismatch"
+        # assert all([type(pl) is int for pl in point_labels]), "Point labels must be integers"
+
+    # Create figure
+    f = plt.figure()
+    a = f.gca()
+
+    ### Manifold Learning / Dimensionality Reduction ###
+    # At the end, we get x_new as an m x 2 matrix
+    val_with_default = lambda val, default: val if not val is None else default
+    if method == 'pca':
+        if verbose: print('Applying PCA')
+        from sklearn.decomposition import PCA
+        whiten = val_with_default( manifold_learning_options.get('whiten'), False )
+        pca = PCA(n_components=2, whiten=whiten)
+        x_new = pca.fit_transform(vectors)
+    elif method == 'tsne':
+        if verbose: print('Applying T-SNE')
+        from sklearn.manifold import TSNE
+        learning_rate = val_with_default(
+                            manifold_learning_options.get('learning_rate'), 200.0 )
+        perplexity = val_with_default(
+                            manifold_learning_options.get('perplexity'), 30.0 )
+        early_exaggeration = val_with_default(
+                            manifold_learning_options.get('early_exaggeration'), 12.0 )
+        x_new = TSNE(n_components = 2,
+                     perplexity = perplexity,
+                     early_exaggeration = early_exaggeration,
+                     learning_rate = learning_rate
+                ).fit_transform(vectors)
+    elif method == 'isomap':
+        if verbose: print('Applying Isomap')
+        from sklearn.manifold import Isomap
+        n_neighbors = val_with_default(manifold_learning_options.get('n_neighbors'), 5)
+        x_new = Isomap(n_neighbors=n_neighbors).fit_transform(vectors)
+    elif method == 'lle':
+        if verbose: print('Applying LLE')
+        from sklearn.manifold import LocallyLinearEmbedding
+        n_neighbors = val_with_default(manifold_learning_options.get('n_neighbors'), 5)
+        x_new = LocallyLinearEmbedding(n_neighbors=n_neighbors).fit_transform(vectors)
+
+    # Unzip the data matrix
+    x, y = x_new[:,0], x_new[:,1]
+
+    ### Add labels to the plot if given ###
+    if not point_labels is None:
+        unique_labels = list(set(point_labels))
+        N = len(unique_labels)
+        # If labels are not integers, make them so
+        if not type(point_labels[0]) is int:
+            label_dict = { unlab : i for i, unlab in enumerate(unique_labels) }
+            point_labels = [ label_dict[p_lab] for p_lab in point_labels ]
+        # Adapted from the method given here:
+        # https://stackoverflow.com/questions/12487060/matplotlib-color-according-to-class-labels
+        # Define the colormap
+        cmap = plt.cm.jet
+        # Extract all colors from the .jet map
+        cmaplist = [cmap(i) for i in range(cmap.N)]
+        # Create the new map
+        cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
+        # Define the bins and normalize
+        bounds = np.linspace(0, N, N + 1)
+        norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+        # Create figure
+        splot = a.scatter(x, y,
+                          c=point_labels,
+                          cmap=cmap,
+                          norm=norm)
+    else:
+        if colors is None:
+            splot = a.scatter(x, y)
+        else:
+            splot = a.scatter(x, y, c=colors, alpha=0.7, s=4)
+    a.set_ylabel('Coordinate 2')
+    a.set_xlabel('Coordinate 1')    
+    plt.title('Projected Pixels in Subspace')
+
+### IO ###
+
+def load_helper(image_path, verbose=True):
+    img = io.imread(image_path)
+    H, W, C = img.shape
+    if verbose: print("Loaded image", image_path, "(Size: %s)" % str(img.shape))
+    # Computing mask
+    alpha_present = C == 4
+    if alpha_present:
+        if verbose: print("\tAlpha channel present. Generating mask.")
+        midvalue = 128
+        orig_mask = img[:,:,3]
+        bool_mask = (orig_mask > midvalue)
+        int_mask = bool_mask.astype(int) 
+        img = img[:,:,0:3]
+        R, G, B = (img[:,:,0][bool_mask], img[:,:,1][bool_mask], img[:,:,2][bool_mask])
+    else:
+        if verbose: print("\tNo alpha channel present.")
+        R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
+        orig_mask = None
+    # At this point, img is always H X W x 3; mask is either None or H x W (boolean)   
+    return img, R, G, B, orig_mask
+
+### Block extraction and pairwise moment comparison methods ###
+
+def pairwise_moment_distances(img, mask, block_cuts, gamma_cov_weight, display_intermeds, verbose):
+    """
+    Divides the input img into non-overlapping blocks. 
+    Note: if a patch is *entirely* masked, it is removed from consideration.
+    """  
+    assert img.max() > 1, "Unexpected pixel scaling encountered"
+    img = img / 255.0
+    ### Extract non-overlapping image blocks ### 
+    img_blocks, mask_blocks = blockify(img, mask, block_cuts, verbose)
+    if verbose: print("Blockified sizes", img_blocks.shape, mask_blocks.shape)
+    NBs_h, NBs_w, BS_h, BS_w, C = img_blocks.shape 
+    nr, nc, N_total = NBs_h, NBs_w, NBs_h * NBs_w
+    patches = img_blocks.reshape(N_total, BS_h, BS_w, C)
+    mpatches = mask_blocks.reshape(N_total, BS_h, BS_w)
+    if display_intermeds:
+        patch_display(patches, nr, nc, show=False, title="Image Patches", subtitles=None, hide_axes=True)
+        patch_display(mpatches, nr, nc, show=False, title="Mask Patches",  subtitles=None, hide_axes=True)
+    ### Now compute the pairwise distances between the moments ###
+    # Using masked arrays to get moments for masked patches
+    def get_masked_array(patch, patch_mask):
+        unrolled = patch.reshape(-1, 3)
+        _um = patch_mask.reshape(unrolled.shape[0])
+        # In numpy, we mask/ignore values where the mask value is True (rather than False)
+        # So notice we *invert* the mask, so true lands where zero was
+        unrolled_mask = (np.stack([_um,_um,_um], axis=-1) == 0)
+        masked_array = np.ma.masked_where(unrolled_mask, unrolled)
+        return masked_array
+    def masked_mean(patch, patch_mask): # ph x pw x 3, ph x pw
+        if patch_mask.sum() <= 1: return None # Entirely masked (one pixel insufficient)
+        masked_array = get_masked_array(patch, patch_mask)
+        if verbose: print('\tNvalid pixels in patch mean:', masked_array.count())
+        return np.ma.MaskedArray.mean(masked_array, axis=0)
+    def masked_cov(patch, patch_mask):
+        if patch_mask.sum() <= 1: return None # Entirely masked (one pixel insufficient)
+        masked_array = get_masked_array(patch, patch_mask)
+        return np.ma.cov(masked_array, rowvar=False)
+    # Actual calculations
+    means = [ masked_mean(p,m) for p,m in zip(patches,mpatches) ]
+    covs = [ masked_cov(p,m) for p,m in zip(patches,mpatches) ]
+    # Show means and covs if verbose
+    if verbose:
+        def table_print(arr):
+            t = 0
+            for r in range(nr):
+                for c in range(nc):
+                    np.set_printoptions(precision=2) # sorry
+                    print(arr[t].data if not arr[t] is None else arr[t], ",", end = '')
+                    t += 1
+                print("\n")
+        print('Means (masked)'); table_print(means)            
+        print('Covs (masked)');  table_print(covs)
+    # Remove invalid patches
+    mean_nones = [(m is None) for m in means]
+    cov_nones = [(c is None) for c in covs]
+    if verbose: print("IGNORING %d PATCHES" % len([m for m in means if m is None]))
+    assert all(m == c for m,c in zip(mean_nones, cov_nones))
+    means = [m for m in means if not m is None]
+    covs  = [c for c in covs  if not c is None]
+    n_valid = len(means)
+    if verbose: print('N_valid', n_valid)
+    # Calculate actual pairwise distances based on the moments
+    channel_len = 3
+    C_squared = channel_len**2
+    N_valid_squared = n_valid**2
+    D = -np.ones((n_valid,n_valid))
+    for i in range(n_valid):
+        for j in range(i,n_valid): # i know, +1, just checking
+            # Mean distance
+            mean_i = means[i]
+            mean_j = means[j]
+            mean_distance = np.sqrt( ((mean_i - mean_j)**2).sum() + 1e-8 ) / channel_len
+            # Covariance distance
+            if gamma_cov_weight < 1e-6:
+                c_dist = 0
+            else:
+                cov_i = covs[i]
+                cov_j = covs[j]
+                c_dist = np.sqrt( ( np.abs(cov_i - cov_j) ).sum() + 1e-8 ) / C_squared
+            # Total distance
+            D[i,j] = mean_distance + gamma_cov_weight * c_dist
+            D[j,i] = D[i,j]
+    if verbose: print("\nDistances:\n", D)
+    # The final complexity is the average pairwise distance between the moments of the patches
+    # Note that the diagonals of D should be ~zero, and the matrix should be symmetric.
+    complexity = D.mean()
+    return complexity
+
+def blockify(img, mask, block_cuts, verbose):
+    """
+    Note: this method shaves off some rows/columns to get the block size to fit.
+    """
+    if verbose: print('img, mask, block_cuts shapes:', img.shape, mask.shape, block_cuts)
+    N_divs_h, N_divs_w = block_cuts
+    H, W, C = img.shape 
+    assert mask.shape[0] == img.shape[0] and img.shape[1] == img.shape[1]
+    residual_h, residual_w = H % N_divs_h, W % N_divs_w
+    if verbose: print('residuals', residual_h, residual_w)
+    if residual_h > 0:
+        img = img[:-residual_h, :, :] # Shave from bottom
+        mask = mask[:-residual_h, :]
+    if residual_w > 0:
+        img = img[:, residual_w:, :] # Shave from left
+        mask = mask[:, residual_w:]
+    if verbose: print('new shapes', img.shape, mask.shape)
+    Bh, Bw = H // N_divs_h, W // N_divs_w
+    if verbose: print('block sizes', Bh, Bw)
+    mask_blocks = skimage.util.shape.view_as_blocks(np.ascontiguousarray(mask), (Bh, Bw))
+    img_blocks = channelwise_extract_blocks(img, (Bh, Bw))
+    return img_blocks, mask_blocks
+
+def channelwise_extract_blocks(I, block_shape):
+    Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape) 
+           for i in range(3) ]
+    return np.stack(Cs, axis=-1) # NB_h x NB_w x HB x WB x C
 
 
 #

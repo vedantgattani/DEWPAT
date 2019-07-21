@@ -1,7 +1,8 @@
 # Img-Complexity
 
 This repo contains implementations of several simple measures of image complexity,
-including ones based on frequency content, information entropy, and spatial derivatives.
+including ones based on frequency content, information entropy, spatial derivatives, and differences in local statistical moments.
+Some basic statistical visualization methods are also present.
 
 ## Requirements
 
@@ -19,7 +20,7 @@ Simply run `python img_complexity.py <input>`, where `<input>` can be a folder o
 
 Run `python img_complexity.py --help` to print detailed usage help from the script.
 
-#### Visualizations
+#### Intermediate Visualizations
 
 You can display intermediate results/images for computations that support it.
 For instance, `--show_local_ents` displays a color map with local estimated patch entropies over the image.
@@ -147,7 +148,50 @@ Measures the average Wasserstein distance (also called the Earth Mover's Distanc
 ```math
 \mathcal{D}_\mathcal{W}(I) = \frac{1}{|P_C|^2} \sum_{p_c\in P_C}\sum_{q_c\in P_C} \mathcal{W}_\rho(p_c,q_c)
 ```
-where $`\mathcal{W}_\rho`$ is the Wasserstein distance of order $\rho$ and $`P_C`$ is the set of coordinate-appended image patches such that for $`p_c\in P_C`$, each $`\nu\in p_c`$ is a vector $`\nu=(x_\ell, y_\ell, v_{p,1}, v_{p,2}, v_{p,3})`$ where the first two values denote the local coordinates of the pixel within the patch and the latter three are the pixel values at that position.
+where $`\mathcal{W}_\rho`$ is the Wasserstein distance of order $`\rho`$ and $`P_C`$ is the set of coordinate-appended image patches such that for $`p_c\in P_C`$, each $`\nu\in p_c`$ is a vector $`\nu=(x_\ell, y_\ell, v_{p,1}, v_{p,2}, v_{p,3})`$ where the first two values denote the local coordinates of the pixel within the patch and the latter three are the pixel values at that position.
+
+### Pairwise Distance between Patch Means
+
+Computes the average pairwise distance between the first moments (means) of the patches across the image:
+```math
+\mathcal{D}_{\mathcal{M},1}(I) = \frac{1}{|C|\,|P|^2} \sum_{p_i,p_j\in P} 
+|| \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2
+```
+where $`\widehat{\mu}(p)\in\mathbb{R}^3`$ is the mean pixel value over patch $`p`$.
+By default, this method utilizes *non-overlapping* patches.
+
+### Pairwise Distance between Patch Moments
+
+This measure is similar to the one just above, except that it considers the second moment (the covariance) as well:
+```math
+\mathcal{D}_{\mathcal{M},2}(I) = \frac{1}{|P|^2} \sum_{p_i,p_j\in P} 
+\frac{1}{|C|}   || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2 + 
+\frac{\gamma_C}{|C|^2} || \widehat{\Sigma}(p_i) - \widehat{\Sigma}(p_j) ||_{1,1/2}
+```
+where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`||M||_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.
+By default, this method utilizes *non-overlapping* patches as well and sets $`\gamma_C=1`$.
+
+## Visualization
+
+The file `vis.py` includes several visualization capabilities, for understanding pixel value distributions. These options include:
+
+- `--show_img`: displays the original image (with its alpha mask if present).
+
+- `--hist_rgb_1d`: displays the marginal distributions of each.
+
+- `--hist_rgb_3d`: displays a 3D interactive histogram of pixel colour values.
+
+- `--scatter_densities`: displays a 3D scatter plot of a random subset of pixel values, with their projected 2D marginal densities.
+
+- `--manual_unfolded_1d`: displays a 1D histogram of the pixel values with respect to some arbitrarily defined ordering of 3D colourspace on the 1D real line, via a manually chosen colormap 
+$`C:[0,1]\rightarrow[0,1]^3`$.
+
+- `--projected_pixels`: displays a random subset of coloured pixel points projected in their PCA subspace.
+
+- `--all`: displays all the aforementioned visualizations.
+
+It can also write the histogram values of the 1D ("manually unfolded") histogram to a file 
+via `--write_1d_histo_vals --output_file histo_output.csv`.
 
 ## TODO
 
