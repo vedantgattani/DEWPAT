@@ -150,15 +150,20 @@ input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon,
                args.pairwise_emd, args.pairwise_mean_distances,
                args.pairwise_moment_distances ]
 if all(map(lambda k: k is None, input_vals)):
+    # No metric specified
     if args.verbose: print('Using all complexity measures except Pairwise EMD')
     EMD_index = 8
-    S = S_all
+    S = S_all.copy() # force S_all to still hold all names (not modified via reference)
     input_vals = list(range(len(input_vals)))
     input_vals.remove( EMD_index )
-    S.remove( S[EMD_index] )
+    S.remove( S[EMD_index] ) # remove EMD from S (list of metrics to use as strings + img path)
 else:
+    # Else, gather the specified metrics
     S = [ S_all[i] for i in range(len(input_vals)) if i in input_vals ]
     if args.verbose: print('Using:', ", ".join(S))
+# S_all = string forms of each complexity
+# S = [img+path] + string forms of complexities to use
+# complexities_to_use = list of ints denoting which complexities to use
 S = ['Image path'] + S
 complexities_to_use = [ val for val in input_vals if not val is None ]
 
