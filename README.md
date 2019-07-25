@@ -171,6 +171,11 @@ This measure is similar to the one just above, except that it considers the seco
 where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`||M||_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.
 By default, this method utilizes *non-overlapping* patches as well and sets $`\gamma_C=1`$.
 
+### DWT coefficients
+
+Computes the sum of the absolute values of DWT detail coefficients $`c`$ extracted from the image (see this page for more details about DWT): The coefficients used correspond to a subset $`C`$ of the horizontal, vertical and diagonal coefficients.
+By default, this subset corresponds to the largest 1% coefficients. 4 levels of DWT are applied using the Haar mother wavelet.
+
 ## Visualization
 
 The file `vis.py` includes several visualization capabilities, for understanding pixel value distributions. These options include:
