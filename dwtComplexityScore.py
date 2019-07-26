@@ -26,7 +26,7 @@ def evalComplexity(im,mask,thrPercentile=99,levels=4,mWavelet='haar'):
     return score
 
 
-def visualize(im, mask, levels=4, mWavelet='haar'):
+def visualize(im, mask, levels=4, mWavelet='haar', show=True):
     # Generates a pyramid-like image with every DWT coefficients (see wikipedia DWT page for an example)
     # Format:
     # [approx, horizontal]
@@ -57,11 +57,24 @@ def visualize(im, mask, levels=4, mWavelet='haar'):
         visTemp = np.concatenate((catTop,catBottom),0)
 
     visOut = visTemp
-
+    fig, ax = plt.subplots()
+    #print(visOut.max())
+    #print(visOut.min())
+    # Clip to avoid annoying warning
+    visOut = np.clip(visOut, 0, 1)
     imgPlot = plt.imshow(visOut)
-    plt.show()
+    if show:
+        plt.show()
 
     return visOut
+
+def _resize_loc(img, new_size):
+    from PIL import Image
+    return np.array(
+                Image.fromarray(
+                    (img*255).astype(np.uint8)
+                ).resize(new_size)
+            ).astype(float) / 255
 
 
 def computeImDWT(im,mask,levels,waveletType):
@@ -72,8 +85,9 @@ def computeImDWT(im,mask,levels,waveletType):
         (cAt, cHt, cVt, cDt) = computeImDWTsingleChannel(im[:, :, k], levels, waveletType)
         if mask is not None:
             for i in range(0, levels):
-                tempMask = deprecImProc.imresize(mask, cHt[i].shape) >0
-
+                tempMask = _resize_loc(mask, reversed(cHt[i].shape)) > 0 
+                #tempMask = deprecImProc.imresize(mask, cHt[i].shape) >0
+                
                 tempMask = morpho.binary_erosion(tempMask, morpho.iterate_structure(morpho.generate_binary_structure(2, 2),2))
 
                 cHt[i] *= tempMask

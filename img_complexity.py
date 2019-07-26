@@ -82,6 +82,10 @@ group_c.add_argument('--pairwise_moment_distances',
         dest='pairwise_moment_distances', action='store_const', 
         const=10, default=None,
         help='Whether to use the pairwise distances between first two moments (mean and covariance) across image patches')
+group_c.add_argument('--wavelet_details',
+        dest='wavelet_details', action='store_const',
+        const=11, default=None,
+        help='Whether to use the absolute values of the wavelet detail coefficients to measure complexity')
 # Algorithm parameters
 group_p = parser.add_argument_group('Algorithmic parameters',
             description='Options controlling parameters of complexity estimation algorithms')
@@ -97,6 +101,12 @@ group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
     help='Specify Sinkhorn entropy regularization weight coefficient (default: 0.25)')
 group_p.add_argument('--emd_coord_scaling', type=float, default=0.2,
     help='Specify spatial coordinate scaling for EMD calculations, which controls the relative balance between pixel vs image space distance (default: 0.2)')
+group_p.add_argument('--wt_threshold_percentile', type=float, default=99,
+    help='Controls the threshold percentile for the wavelet transform-based method')
+group_p.add_argument('--wt_n_levels', type=int, default=4,
+    help='Controls the number of decomposition levels used by the discrete wavelet transform')
+group_p.add_argument('--wt_mother_wavelet', type=str, default='haar',
+    help='Controls the type of mother wavelet used by the discrete wavelet transform')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -121,6 +131,9 @@ group_v.add_argument('--show_emd_intermeds',
 group_v.add_argument('--show_img',          
         dest='show_img', action='store_true',
         help='Whether to display the input image')
+group_v.add_argument('--show_dwt',
+        dest='show_dwt', action='store_true',
+        help='Whether to display the discrete wavelet transform intermediaries')
 group_v.add_argument('--show_all',          
         dest='show_all', action='store_true',
         help='Whether to display all of the above images')
@@ -141,14 +154,14 @@ S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
           'Average Gradient Magnitude', 'Pixelwise Differential Entropy',
           'Patchwise Differential Entropy', 'Global Patch Covariance',
           'Pairwise Wasserstein Distance', 'Pairwise Mean Distances',
-          'Pairwise Moment Distances']
+          'Pairwise Moment Distances', 'Wavelet Detail Coef']
 # Discern which measures to use
 input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, 
                args.weighted_fourier, args.local_covars, 
                args.grad_mag, args.diff_shannon_entropy, 
                args.diff_shannon_entropy_patches, args.global_patch_covar, 
                args.pairwise_emd, args.pairwise_mean_distances,
-               args.pairwise_moment_distances ]
+               args.pairwise_moment_distances, args.wavelet_details ]
 if all(map(lambda k: k is None, input_vals)):
     # No metric specified
     if args.verbose: print('Using all complexity measures except Pairwise EMD')
@@ -203,6 +216,7 @@ def compute_complexities(impath,    # Path to input image file
         show_loccov_image = False,  # Whether to display the local covariances
         show_gradient_img = False,  # Shows 2nd derivatives if use_gradient_image is true
         show_pw_mnt_ptchs = False,  # Show the patches used to compute the moments (for measures 9 and 10)
+        show_dwt = False,           # Show the DWT intermediaries
         display_image = False,      # Whether to display the image under consideration
         verbose=False               # Whether to print verbosely when running
     ):
@@ -641,6 +655,7 @@ def compute_complexities(impath,    # Path to input image file
 
     #--------------------------------------------------------------------------------------------------------------------#    
 
+    # HACK: Mask handling for measures > 9
     if using_alpha_mask:
         mask_pwmm = alpha_mask
     else:
@@ -648,6 +663,7 @@ def compute_complexities(impath,    # Path to input image file
 
     # TODO ok for scalar images?
 
+    # Measure 9: mean-matching pairwise distances
     if 9 in complexities_to_use:
         if verbose: print('Computing patch-wise distances between means')
         @timing_decorator(args.timing)
@@ -658,6 +674,7 @@ def compute_complexities(impath,    # Path to input image file
 
     #--------------------------------------------------------------------------------------------------------------------#
 
+    # Measure 10: moment-matching pairwise distances
     if 10 in complexities_to_use:
         # Don't display the same patches twice
         if 9 in complexities_to_use: 
@@ -670,6 +687,20 @@ def compute_complexities(impath,    # Path to input image file
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS, 
                     gamma_cov_weight=1, display_intermeds=show_pw_mnt_ptchs2, verbose=verbose)
         add_new(patchwise_moment_dist(img, mask_pwmm), 10)
+
+    #--------------------------------------------------------------------------------------------------------------------#
+    
+    # Measure 11: absolute sum of discrete wavelet transform detail coefficients
+    if 11 in complexities_to_use:
+        if verbose: print('Computing DWT-based measure')
+        from dwtComplexityScore import evalComplexity as get_dwt_complexity, visualize as vis_dwt
+        @timing_decorator(args.timing)
+        def dwt_complexity_handler(img, mask):
+            if show_dwt:
+                vis_dwt(img, mask, levels=args.wt_n_levels, mWavelet=args.wt_mother_wavelet, show=False)
+            return get_dwt_complexity(img, mask, levels=args.wt_n_levels, thrPercentile=args.wt_threshold_percentile,
+                        mWavelet=args.wt_mother_wavelet)
+        add_new(dwt_complexity_handler(img, mask_pwmm), 11)
 
     ### </ Finished computing complexity measures /> ###
 
@@ -715,6 +746,7 @@ args_d = { "verbose"            : args.verbose,
            "show_locent_image"  : True if args.show_all else args.show_locents,
            "show_pw_mnt_ptchs"  : True if args.show_all else args.show_pw_mnt_ptchs,
            "show_loccov_image"  : True if args.show_all else args.show_local_covars,
+           "show_dwt"           : True if args.show_all else args.show_dwt,
            "display_image"      : True if args.show_all else args.show_img }
 grad_and_orig = args.use_grad_too # Preparations if doing both gradient and original image
 if grad_and_orig: del args_d['use_gradient_image']
