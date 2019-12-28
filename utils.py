@@ -18,10 +18,10 @@ def imdisplay(inim, title, colorbar=False, cmap=None):
     if colorbar: fig.colorbar(imm)
 
 def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None, hide_axes=False):
-    # patches must be n_patches x H x W x C 
+    # patches must be n_patches x H x W x C
     N = nrows * ncols
     N_dims = len(patches.shape)
-    assert N == patches.shape[0] 
+    assert N == patches.shape[0]
     if not subtitles is None: assert len(subtitles) == N
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols)
     for i, axi in enumerate(ax.flat):
@@ -94,12 +94,12 @@ def histogram3dplot(h, e, fig=None, verbose=True):
         #f = plt.figure(fig)
     else:
         f = plt.gcf()
-    ax = f.add_subplot(111, projection='3d')     
+    ax = f.add_subplot(111, projection='3d')
     mxbins = np.array([M,N,O]).max()
     if verbose: print('mxbins', mxbins)
 
     # Note: somehow the values have been permuted. I suspect it is due to the flattening
-    # procedures. This appears to give correct results, nevertheless. 
+    # procedures. This appears to give correct results, nevertheless.
     # The permuting has caused R->B, B->G, G->R; hence we cycle their order.
 
     colors = np.vstack( (flat_B, flat_R, flat_G) ).T / 255
@@ -115,13 +115,13 @@ def histogram3dplot(h, e, fig=None, verbose=True):
 
 def patches_over_channels(img, patch_size, window_step, return_meta=True, floatify=False):
     # C x H x W x Px x Py = num_channels x n_patches_vert x n_patches_horz x patch_H x patch_W
-    if floatify: 
+    if floatify:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             img = skimage.img_as_float(img)
-    P = np.array([ 
+    P = np.array([
             patches_per_channel(img[:,:,k], patch_size, window_step)
-            for k in range(3) 
+            for k in range(3)
         ])
     if return_meta: return P, P.shape, patch_size**2
     return P
@@ -129,9 +129,9 @@ def patches_over_channels(img, patch_size, window_step, return_meta=True, floati
 def patches_per_channel(channel, patch_size, window_step):
     # H x W x Px x Py = n_patches_vert x n_patches_horz x patch_H x patch_W
     return view_as_windows(
-                np.ascontiguousarray( channel ), 
-                (patch_size, patch_size), 
-                step=window_step) 
+                np.ascontiguousarray( channel ),
+                (patch_size, patch_size),
+                step=window_step)
 
 def vectorize_single_masked_patch(patches, mask, i, j, wt):
     mask_patch = mask[i,j,:,:]
@@ -149,17 +149,17 @@ def vectorize_masked_patches(patches, mask, H, W, as_list=False, flatten=True, r
     wt = mask.shape[2] * mask.shape[3] # patch/window total size
     if flatten:
         if as_list:
-            P = [ vectorize_single_masked_patch_as_list(patches, mask, i, j, wt) 
+            P = [ vectorize_single_masked_patch_as_list(patches, mask, i, j, wt)
                   for i in range(H) for j in range(W) ]
         else:
-            P = [ vectorize_single_masked_patch(patches, mask, i, j, wt) 
+            P = [ vectorize_single_masked_patch(patches, mask, i, j, wt)
                   for i in range(H) for j in range(W) ]
     else:
         if as_list:
-            P = [ [ vectorize_single_masked_patch_as_list(patches, mask, i, j, wt) 
+            P = [ [ vectorize_single_masked_patch_as_list(patches, mask, i, j, wt)
                     for i in range(H) ] for j in range(W) ]
         else:
-            P = [ [ vectorize_single_masked_patch(patches, mask, i, j, wt) 
+            P = [ [ vectorize_single_masked_patch(patches, mask, i, j, wt)
                     for i in range(H) ] for j in range(W) ]
     if remove_none:
         return np.array([vp for vp in P if not vp is None])
@@ -219,7 +219,7 @@ def conv_to_ubyte(img):
 
 ### Timing helpers ###
 
-# Note: calling this as a decorator actually runs it, so that 
+# Note: calling this as a decorator actually runs it, so that
 # replacer is the actual decorator used.
 def timing_decorator(do_timing):
     def decorator(wrapped_func):
@@ -353,7 +353,7 @@ def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None
         else:
             splot = a.scatter(x, y, c=colors, alpha=0.7, s=4)
     a.set_ylabel('Coordinate 2')
-    a.set_xlabel('Coordinate 1')    
+    a.set_xlabel('Coordinate 1')
     plt.title('Projected Pixels in Subspace')
 
 ### IO ###
@@ -369,29 +369,29 @@ def load_helper(image_path, verbose=True):
         midvalue = 128
         orig_mask = img[:,:,3]
         bool_mask = (orig_mask > midvalue)
-        int_mask = bool_mask.astype(int) 
+        int_mask = bool_mask.astype(int)
         img = img[:,:,0:3]
         R, G, B = (img[:,:,0][bool_mask], img[:,:,1][bool_mask], img[:,:,2][bool_mask])
     else:
         if verbose: print("\tNo alpha channel present.")
         R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
         orig_mask = None
-    # At this point, img is always H X W x 3; mask is either None or H x W (boolean)   
+    # At this point, img is always H X W x 3; mask is either None or H x W (boolean/byte)   
     return img, R, G, B, orig_mask
 
 ### Block extraction and pairwise moment comparison methods ###
 
 def pairwise_moment_distances(img, mask, block_cuts, gamma_cov_weight, display_intermeds, verbose):
     """
-    Divides the input img into non-overlapping blocks. 
+    Divides the input img into non-overlapping blocks.
     Note: if a patch is *entirely* masked, it is removed from consideration.
-    """  
+    """
     assert img.max() > 1, "Unexpected pixel scaling encountered"
     img = img / 255.0
-    ### Extract non-overlapping image blocks ### 
+    ### Extract non-overlapping image blocks ###
     img_blocks, mask_blocks = blockify(img, mask, block_cuts, verbose)
     if verbose: print("Blockified sizes", img_blocks.shape, mask_blocks.shape)
-    NBs_h, NBs_w, BS_h, BS_w, C = img_blocks.shape 
+    NBs_h, NBs_w, BS_h, BS_w, C = img_blocks.shape
     nr, nc, N_total = NBs_h, NBs_w, NBs_h * NBs_w
     patches = img_blocks.reshape(N_total, BS_h, BS_w, C)
     mpatches = mask_blocks.reshape(N_total, BS_h, BS_w)
@@ -430,7 +430,7 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_cov_weight, display_i
                     print(arr[t].data if not arr[t] is None else arr[t], ",", end = '')
                     t += 1
                 print("\n")
-        print('Means (masked)'); table_print(means)            
+        print('Means (masked)'); table_print(means)
         print('Covs (masked)');  table_print(covs)
     # Remove invalid patches
     mean_nones = [(m is None) for m in means]
@@ -474,7 +474,7 @@ def blockify(img, mask, block_cuts, verbose):
     """
     if verbose: print('img, mask, block_cuts shapes:', img.shape, mask.shape, block_cuts)
     N_divs_h, N_divs_w = block_cuts
-    H, W, C = img.shape 
+    H, W, C = img.shape
     assert mask.shape[0] == img.shape[0] and img.shape[1] == img.shape[1]
     residual_h, residual_w = H % N_divs_h, W % N_divs_w
     if verbose: print('residuals', residual_h, residual_w)
@@ -492,7 +492,7 @@ def blockify(img, mask, block_cuts, verbose):
     return img_blocks, mask_blocks
 
 def channelwise_extract_blocks(I, block_shape):
-    Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape) 
+    Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape)
            for i in range(3) ]
     return np.stack(Cs, axis=-1) # NB_h x NB_w x HB x WB x C
 

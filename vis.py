@@ -3,7 +3,7 @@ Implements several functions useful for visualization of images, particularly co
 """
 
 import os, sys, numpy as np, skimage, argparse, scipy, matplotlib
-from skimage import io
+from skimage import io, color as skcolor
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from utils import imdisplay, load_helper
@@ -18,6 +18,10 @@ def main_single_display(args):
 
     ### Show the original image ###
     if args.show_img: display_orig(img, orig_mask, args)
+    ### Show HSV decomposition ###
+    if args.show_hsv: display_hsv(img, orig_mask, args)
+    ### Polar Hue histogram from HSV ###
+    if args.hist_hsv_polar: plot_polar_hsv(img, orig_mask, args)
     ### 1D RGB histograms ###
     if args.hist_rgb_1d: plot_1D_rgb(R, G, B)
     ### 3D RGB histograms ###
@@ -34,7 +38,7 @@ def main_single_display(args):
 
 def main_dir_write(args):
     if args.write_1d_histo_vals:
-        folder = args.input 
+        folder = args.input
         output_filename = args.output_file
         write_manual_unfolded_1d(folder, output_filename)
 
@@ -99,7 +103,7 @@ def write_manual_unfolded_1d(folder, output_filename, verbose=True):
         img_histo_vals = image + "," + ",".join([str(hs) for hs in H])
         append_to_file(img_histo_vals)
 
-def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=False, n_search_bins=200, kde_bins=150, 
+def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=False, n_search_bins=200, kde_bins=150,
                             add_kde_curve=True, logscale=False, make_plot=True):
     """
     Plots a 1D histogram of colour for the given image, unfolded in a manually defined fashion.
@@ -109,7 +113,7 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
     assert np.max(R) > 1.0 or np.max(G) > 1.0 or np.max(B) > 1.0, "Unexpected non-integer input received"
     print('Generating plot of manually unfolded 1D colour histogram')
     # Choose colormap C: [0,1] --> R^4 = (r,g,b,a)
-    # TODO It is possible to define a custom colormap simply via a function that linearly interpolates between 
+    # TODO It is possible to define a custom colormap simply via a function that linearly interpolates between
     # chosen colors at specified positions, but that is not implemented here.
     indexed_choices = ['nipy_spectral', 'gist_ncar', 'custom']
     if type(cmap_name_or_index) is int:
@@ -120,22 +124,22 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
         cmap_name = 'Manually Defined'
         from utils import color_multiinterpolator, color_biinterpolator, from_ints
         colorlist = [
-            from_ints(0,0,0),           # 
-            from_ints(137, 51, 163),    #    
-            from_ints(38, 39, 228),     # 
-            from_ints(83, 206, 249),    # 
-            from_ints(83, 249, 197),    # 
-            from_ints(13, 149, 9),      # 
-            from_ints(173, 219, 59),    # 
-            from_ints(240, 249, 18),    # 
-            from_ints(255, 174, 5),     # 
-            from_ints(140, 98, 37),     # 
-            from_ints(249, 7, 9),       # 
-            from_ints(251, 138, 234),   # 
-            from_ints(230, 230, 230),   # 
-            from_ints(255, 255, 255)    # 
-        ]         
-        # For times, 0 and 1 will be prepended and appended   
+            from_ints(0,0,0),           #
+            from_ints(137, 51, 163),    #
+            from_ints(38, 39, 228),     #
+            from_ints(83, 206, 249),    #
+            from_ints(83, 249, 197),    #
+            from_ints(13, 149, 9),      #
+            from_ints(173, 219, 59),    #
+            from_ints(240, 249, 18),    #
+            from_ints(255, 174, 5),     #
+            from_ints(140, 98, 37),     #
+            from_ints(249, 7, 9),       #
+            from_ints(251, 138, 234),   #
+            from_ints(230, 230, 230),   #
+            from_ints(255, 255, 255)    #
+        ]
+        # For times, 0 and 1 will be prepended and appended
         times = [
             0.12,  # violet
             0.20,  # blue
@@ -145,7 +149,7 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
             0.45,  # green-yellow mix
             0.50,  # yellow
             0.60,  # orange
-            0.70,  # brown   
+            0.70,  # brown
             0.80,  # red
             0.90,  # pink
             0.96   # light grey
@@ -163,7 +167,7 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
     # Put image pixels into normalized 3D RGB colour space
     P = np.vstack( (R, G, B) ).T / 255.0
     # We want to map each 3D colour to its 1D representation to get a histogram of it
-    # Let's get the nearest neighbour of each p in P, from within the set of mapped 
+    # Let's get the nearest neighbour of each p in P, from within the set of mapped
     # middle bin colors with a KD-tree
     from scipy import spatial
     if verbose: print('Building and querying KD-tree')
@@ -175,7 +179,7 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
     if make_plot:
         # Generate 1D histogram
         fig, ax = plt.subplots()
-        n, bins, patches = ax.hist(single_dim_P, bins=nbins, density=True, range=(0,1), 
+        n, bins, patches = ax.hist(single_dim_P, bins=nbins, density=True, range=(0,1),
                                         linewidth=1.1, edgecolor='black')
         bin_centers = 0.5 * (bins[:-1] + bins[1:]) # Histo bins, not search bins
         col = bin_centers - min(bin_centers) # scale values to interval [0,1]
@@ -191,7 +195,7 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
         norm = None
         plt.register_cmap(cmap=C)
         fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=C), ax=ax, orientation='horizontal', fraction=0.1)
-        # Add KDE curve 
+        # Add KDE curve
         if add_kde_curve:
             kde = scipy.stats.kde.gaussian_kde(single_dim_P)
             kde_x = np.linspace(0, 1, kde_bins)
@@ -201,14 +205,89 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
     # Return: (1D pseudocolors per pixel, histogram values per bin, bin edge values, bin edge color values)
     return single_dim_P, n, bins, np.array([C(b)[0:3] for b in bins])
 
+def display_hsv(img, orig_mask, args, fix_color_interval=True):
+    names = ['Original', 'Hue', 'Saturation', 'Value']
+    img = img[:,:,0:3] / 255
+
+    if not orig_mask is None:
+
+        #orig_mask = np.array( [255] * np.prod(orig_mask.shape) ).reshape(orig_mask.shape)
+
+        print('\tApplying mask, but otherwise ignoring alpha channel')
+        midvalue = 128
+        print(orig_mask.max(), orig_mask.min(), orig_mask.mean())
+
+        bool_mask = (orig_mask > midvalue)
+        f_mask = bool_mask.astype(int).astype(float) * (1.0 - 1e-6)
+        print('mask', f_mask.max(), f_mask.min())
+        print('img', img.max(), img.min())
+        img = img * f_mask[:,:,np.newaxis] #.reshape(img.shape[0], img.shape[1], 1)
+    aspect_ratio = img.shape[0] / img.shape[1] #
+    hsv_img = skcolor.rgb2hsv(img)
+    fig, axs = plt.subplots(2, 2) #, figsize=(10, 3))
+    c = 0
+    q = []
+    for i in range(2):
+        for j in range(2):
+            name = names[c]
+            ax = axs[i,j]
+            A = hsv_img[:,:,c - 1] if c > 0 else img # H, S, V
+            cm_choice = 'hsv' if c == 1 else 'magma'
+            ims = ax.imshow(A, interpolation='bicubic',
+                            vmin=0, vmax=1, cmap=cm_choice)
+            q.append(ims)
+            ax.set_title(name.capitalize())
+            plt.axis('off')
+            ims.axes.get_xaxis().set_visible(False)
+            ims.axes.get_yaxis().set_visible(False)
+            #if c != 0:
+            #    plt.colorbar(ims, ax=ax)
+            c += 1
+    # Neat: https://stackoverflow.com/questions/41428442/horizontal-colorbar-over-2-of-3-subplots
+    #fig.colorbar(ims, ax=axs.ravel().tolist())
+
+    # add_axes -> The dimensions [left, bottom, width, height] of the new axes.
+    # subplots_adjust(left=None, bottom=None, right=None, top=None,
+    #                 wspace=None, hspace=None)
+
+    #fig.subplots_adjust(right=0.80, wspace=0.1, hspace=0.1)
+    #cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    #fig.colorbar(q[1], cax=cbar_ax)
+    CW1 = 0.025
+    CW2 = 0.04 #CW1 * aspect_ratio
+    Rm = 0.87
+    Bm = 0.13
+    cb1_start = 0.55
+    lstart = 0.125 #.0 - Rm
+    cb_pad = 0.02
+
+    clen1 = 1.0 - cb1_start - 0.15
+    clen2 = Rm - lstart
+    fig.subplots_adjust(bottom=Bm, right=Rm, wspace=0.029, hspace=0.049)
+    #fig.subplots_adjust(bottom=0.17, wspace=0.1, hspace=0.1)
+    cbar_ax = fig.add_axes([Rm + cb_pad, cb1_start, CW1, clen1])
+    fig.colorbar(q[1], cax=cbar_ax)
+    cbar_ax = fig.add_axes([lstart, Bm - cb_pad, clen2, CW2])
+    fig.colorbar(q[2], cax=cbar_ax, orientation='horizontal')
+
+
+
+def plot_polar_hsv(img, orig_mask, args):
+    pass # TODO
+
 def display_orig(img, orig_mask, args):
     imdisplay(img, title="Original Image (%s)" % args.input)
-    if not orig_mask is None: 
+    if not orig_mask is None:
         fig, ax = plt.subplots()
-        ax.imshow(orig_mask) 
+        ax.imshow(orig_mask)
         plt.title('Mask (%s)' % args.input)
 
-def plot_density_proj(R, G, B, verbose=True, point_subsample=1000, density_subsample=20000, nbins=30):
+def plot_density_proj(R, G, B,
+                      verbose=True,
+                      point_subsample=1000,
+                      density_subsample=20000,
+                      nbins=30):
+    """  """
     print('Generating 3D scatterplot with projected densities')
     n_pixels = len(R)
     if verbose: print("n_pixels", n_pixels)
@@ -218,11 +297,11 @@ def plot_density_proj(R, G, B, verbose=True, point_subsample=1000, density_subsa
         if verbose: print("Subsampling pixels for display")
         rinds = np.random.choice(n_pixels, size=point_subsample, replace=False)
         R, G, B = R[rinds], G[rinds], B[rinds]
-    positions = np.vstack( (R, G, B) ).T 
+    positions = np.vstack( (R, G, B) ).T
     if verbose: print("pos shape", positions.shape)
     colours = positions / 255
     fig = plt.figure(figsize=(8,8))
-    ax = fig.add_subplot(111, projection='3d') 
+    ax = fig.add_subplot(111, projection='3d')
     ax.scatter(R, G, B, s=3, c=colours, alpha=1)
     ax.set_xlabel('Red'); ax.set_ylabel('Green'); ax.set_zlabel('Blue')
     # Subsampling for KDE
@@ -258,9 +337,9 @@ def plot_density_proj(R, G, B, verbose=True, point_subsample=1000, density_subsa
     # Add projected plots to the walls in 3D
     def add_imgs(xx,yy,zz,H):
         norm = matplotlib.colors.Normalize(vmin=H.min(), vmax=H.max() )
-        colors = my_cmap(norm(H))        
-        ax.plot_surface(xx, yy, zz, cstride=cstr, rstride=rstr, facecolors=colors, shade=False, 
-                        #alpha=img_alpha, 
+        colors = my_cmap(norm(H))
+        ax.plot_surface(xx, yy, zz, cstride=cstr, rstride=rstr, facecolors=colors, shade=False,
+                        #alpha=img_alpha,
                         linewidth=0, antialiased=False)
     add_imgs(RG_vals[0], RG_vals[1], np.zeros_like(RG_vals[0]), RG_vals[2])
     add_imgs(RB_vals[0], np.zeros_like(RB_vals[0]) + 255, RB_vals[1], RB_vals[2])
@@ -291,7 +370,7 @@ def plot_1D_rgb(R,G,B,nbins=40):
         V = R if pos == 0 else (G if pos == 1 else B)
         ax1 = fig.add_subplot(gs[0,pos])
         cm1 = plt.cm.get_cmap(cm_names[pos])
-        n, bins, patches = ax1.hist(V, bins=nbins, density=1, range=(0,255), 
+        n, bins, patches = ax1.hist(V, bins=nbins, density=1, range=(0,255),
                                     linewidth=1.2, edgecolor='black') # color overridden
         bin_centers = 0.5 * (bins[:-1] + bins[1:])
         col = bin_centers - min(bin_centers) # scale values to interval [0,1]
@@ -313,6 +392,10 @@ if __name__ == '__main__':
     # Plotting options
     parser.add_argument('--show_img', dest='show_img', action='store_true',
         help='Whether to display the input image')
+    parser.add_argument('--show_hsv', dest='show_hsv', action='store_true',
+        help='Whether to display the input image as HSV components')
+    parser.add_argument('--hist_hsv_polar', dest='hist_hsv_polar', action='store_true',
+        help='Displays a polar (circular) plot of the HSV hue values')
     parser.add_argument('--hist_rgb_1d', dest='hist_rgb_1d', action='store_true',
         help='Displays a set of 1D histograms of RGB pixel values')
     parser.add_argument('--hist_rgb_3d', dest='hist_rgb_3d', action='store_true',
@@ -340,6 +423,8 @@ if __name__ == '__main__':
     if args.all:
         args.show_img = True
         args.hist_rgb_1d = True
+        args.show_hsv = True
+        args.hist_hsv_polar = True
         args.hist_rgb_3d = True
         args.scatter_densities = True
         args.manual_unfolded_1d = True
