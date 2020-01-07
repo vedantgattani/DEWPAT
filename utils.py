@@ -363,7 +363,7 @@ def load_helper(image_path, verbose=True):
     H, W, C = img.shape
     if verbose: print("Loaded image", image_path, "(Size: %s)" % str(img.shape))
     # Computing mask
-    alpha_present = C == 4
+    alpha_present = (C == 4)
     if alpha_present:
         if verbose: print("\tAlpha channel present. Generating mask.")
         midvalue = 128
@@ -376,7 +376,7 @@ def load_helper(image_path, verbose=True):
         if verbose: print("\tNo alpha channel present.")
         R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
         orig_mask = None
-    # At this point, img is always H X W x 3; mask is either None or H x W (boolean/byte)   
+    # At this point, img is always H X W x 3; mask is either None or H x W (boolean/byte)
     return img, R, G, B, orig_mask
 
 ### Block extraction and pairwise moment comparison methods ###

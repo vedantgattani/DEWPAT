@@ -22,6 +22,12 @@ def main_single_display(args):
     if args.show_hsv: display_hsv(img, orig_mask, args)
     ### Polar Hue histogram from HSV ###
     if args.hist_hsv_polar: plot_polar_hsv(img, orig_mask, args)
+    ### Show Scalar colormap index image ###
+    if args.show_twilight_img: # TODO other maps
+        plot_colour_mapped_scalar_image(img, orig_mask, args, 'twilight')
+    ### Polar Colour histogram from named colormaps ###
+    if args.hist_twilight_polar: # TODO other maps
+        plot_polar_generic(img, orig_mask, args, 'twilight')
     ### 1D RGB histograms ###
     if args.hist_rgb_1d: plot_1D_rgb(R, G, B)
     ### 3D RGB histograms ###
@@ -210,18 +216,12 @@ def display_hsv(img, orig_mask, args, fix_color_interval=True):
     img = img[:,:,0:3] / 255
 
     if not orig_mask is None:
-
-        #orig_mask = np.array( [255] * np.prod(orig_mask.shape) ).reshape(orig_mask.shape)
-
         print('\tApplying mask, but otherwise ignoring alpha channel')
         midvalue = 128
-        print(orig_mask.max(), orig_mask.min(), orig_mask.mean())
-
         bool_mask = (orig_mask > midvalue)
         f_mask = bool_mask.astype(int).astype(float) * (1.0 - 1e-6)
-        print('mask', f_mask.max(), f_mask.min())
-        print('img', img.max(), img.min())
         img = img * f_mask[:,:,np.newaxis] #.reshape(img.shape[0], img.shape[1], 1)
+
     aspect_ratio = img.shape[0] / img.shape[1] #
     hsv_img = skcolor.rgb2hsv(img)
     fig, axs = plt.subplots(2, 2) #, figsize=(10, 3))
@@ -240,40 +240,159 @@ def display_hsv(img, orig_mask, args, fix_color_interval=True):
             plt.axis('off')
             ims.axes.get_xaxis().set_visible(False)
             ims.axes.get_yaxis().set_visible(False)
-            #if c != 0:
-            #    plt.colorbar(ims, ax=ax)
             c += 1
     # Neat: https://stackoverflow.com/questions/41428442/horizontal-colorbar-over-2-of-3-subplots
     #fig.colorbar(ims, ax=axs.ravel().tolist())
-
     # add_axes -> The dimensions [left, bottom, width, height] of the new axes.
     # subplots_adjust(left=None, bottom=None, right=None, top=None,
     #                 wspace=None, hspace=None)
-
-    #fig.subplots_adjust(right=0.80, wspace=0.1, hspace=0.1)
-    #cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-    #fig.colorbar(q[1], cax=cbar_ax)
     CW1 = 0.025
-    CW2 = 0.04 #CW1 * aspect_ratio
+    CW2 = 0.04
     Rm = 0.87
     Bm = 0.13
     cb1_start = 0.55
-    lstart = 0.125 #.0 - Rm
+    lstart = 0.125
     cb_pad = 0.02
 
     clen1 = 1.0 - cb1_start - 0.15
     clen2 = Rm - lstart
-    fig.subplots_adjust(bottom=Bm, right=Rm, wspace=0.029, hspace=0.049)
+    fig.subplots_adjust(bottom=Bm, right=Rm, wspace=0.079, hspace=0.099)
     #fig.subplots_adjust(bottom=0.17, wspace=0.1, hspace=0.1)
     cbar_ax = fig.add_axes([Rm + cb_pad, cb1_start, CW1, clen1])
     fig.colorbar(q[1], cax=cbar_ax)
     cbar_ax = fig.add_axes([lstart, Bm - cb_pad, clen2, CW2])
     fig.colorbar(q[2], cax=cbar_ax, orientation='horizontal')
 
+def plot_polar_generic(img, orig_mask, args, f, apply_mask=True, log_histo=False):
+    """
+    Args are the same as plot_polar_hsv except the colormap function
+        f : [0,1] -> [0,1]^3
+    is used to compute the scalar image used in or processed for the polar plot.
+    """
+    H, W, C = img.shape
+    img = img[:,:,0:3] / 255
+    # RGB -> index value
+    R, G, B = img[:,:,0], img[:,:,1], img[:,:,2]
+    tI = transform_rgb_to_cmap_index_vector(f, R, G, B, verbose=True).reshape(H,W)
+    # TODO
+
+def plot_colour_mapped_scalar_image(img, orig_mask, args, C):
+
+    # TODO: option to pass C as a function
+
+    Cname = C
+    if type(C) is str:
+        C = plt.cm.get_cmap(C)
+    img = img[:,:,0:3] / 255
+    H, W, _ = img.shape
+    # RGB -> scalar index value
+    R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
+    SI = transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True).reshape(H, W)
+    #
+    fig, ax = plt.subplots()
+    ims = ax.imshow(SI, interpolation='bicubic',
+                    vmin=0, vmax=1, cmap=Cname)
+    fig.colorbar(ims, #plt.cm.ScalarMappable(norm=norm, cmap=C),
+                 ax=ax, orientation='vertical', fraction=0.1)
 
 
-def plot_polar_hsv(img, orig_mask, args):
-    pass # TODO
+def plot_polar_hsv(img, orig_mask, args, apply_mask=True, log_histo=False):
+    print('Generating polar plot')
+    img = img[:,:,0:3] / 255
+    hsv_img = skcolor.rgb2hsv(img)
+    if not orig_mask is None and apply_mask:
+        midvalue = 128
+        bool_mask = (orig_mask > midvalue)
+        H = hsv_img[:,:,0][bool_mask]
+        print(H.shape, bool_mask.shape)
+        rmnum = np.prod(hsv_img[:,:,0].shape) - np.sum(bool_mask)
+        print('\tRemoving', rmnum,
+              "masked values (%.2f%%)"
+              % (100 * rmnum / np.prod(hsv_img[:,:,0].shape)))
+    else:
+        H = hsv_img[:,:,0].flatten()
+    print( H.min(), H.max(), H.mean(), H[np.random.randint(0,H.shape[0],50)] )
+    H = 2 * np.pi * H
+    m = H.shape[0]
+    print('Num hue values in histogram:', m)
+    fig = plt.figure() #figsize=(8,8))
+
+    N = 50 # N_bins
+    bottom = 0.0
+    max_height = 1.0
+
+    theta = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
+#    theta = np.linspace(0.0, 1.0, N, endpoint=False)
+
+    # hist : array -> The values of the histogram. (counts)
+    # bin_edges : array of dtype float -> Return the bin edges (length(hist)+1).
+    hist, bin_edges = np.histogram(H, bins = N, range=(0.0, 2 * np.pi))
+    if log_histo:
+        hist = np.log(hist + 1.0)
+    print('hist', hist)
+
+    radii = max_height * hist / m
+    width = (2 * np.pi) / N
+
+    # axes = [fig.add_axes([0.1,0.1,0.9,0.9],polar=True,
+    #         label = "axes{}".format(i))
+    #         for i in range(len(variables))]
+    # l, text = axes[0].set_thetagrids(angles,
+    #                                  labels=variables)
+    # [txt.set_rotation(angle-90) for txt, angle
+    #      in zip(text, angles)]
+
+    ax = plt.subplot(111, polar=True)
+    #ax.set_xticklabels(['N', '', 'W', '', 'S', '', 'E', ''])
+    ax.set_yticklabels([])
+
+    ax.set_xticklabels(['Red', 'Orange', 'L. Green', 'Green',
+                        'L. Blue', 'Blue', 'Purple', 'Pink'])
+    # label_angles = [0, 45, 0, 135, 0,
+    #                 90, 0, 45, 0]
+    centers = [ 'left', 'left', 'center', 'right',
+                'right', 'right', 'center', 'left' ]
+    #plt.xticks(rotation='vertical')
+
+    for i, label in enumerate(ax.get_xticklabels()):
+        label.set_ha(centers[i]) # set horz alignments
+    #    label.set_rotation(label_angles[i])
+
+    bars = ax.bar(theta, radii, width=width, bottom=bottom)
+
+    # Use custom colors and opacity
+    assert len(radii) == N
+    for i, (r, bar) in enumerate( zip(radii, bars) ):
+#        bar.set_facecolor(plt.cm.hsv(r / 10.))
+        curr_val = i / N
+        bar.set_facecolor( plt.cm.hsv(curr_val) )
+        bar.set_alpha(0.99)
+
+def transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True, n_search_bins=100):
+    """ Takes normed image values """
+    if type(C) is str: C = plt.cm.get_cmap(C)
+    # Use the colormap to get the bin values
+    bin_edge_indices = np.linspace(0.0, 1.0, n_search_bins)
+    bin_middle_inds = (bin_edge_indices[1:] + bin_edge_indices[:-1]) / 2.0
+    bin_middle_colors = np.array([ C(midind)[0:3] for midind in bin_middle_inds ]) # remove alpha after mapping
+    if verbose: print(bin_middle_inds, '\n', bin_middle_colors, '\n', bin_middle_inds.shape, bin_middle_colors.shape)
+    # Put image pixels into normalized 3D RGB colour space
+    P = np.vstack( (R, G, B) ).T # / 255.0
+    # We want to map each 3D colour to its 1D representation to get a histogram of it
+    # Let's get the nearest neighbour of each p in P, from within the set of mapped
+    # middle bin colors with a KD-tree
+    from scipy import spatial
+    if verbose: print('Building and querying KD-tree')
+    tree = spatial.cKDTree(bin_middle_colors)
+    distances, neb_indices = tree.query(P, k=1)
+    if verbose: print('Distance (error) max and avg', np.mean(distances), np.max(distances))
+    # Assign 1D pseudo-colour values to each position in the colour point cloud of the image
+    single_dim_P = bin_middle_inds[ neb_indices ]
+    if verbose:
+        rinds = np.random.randint(0, single_dim_P.shape[0], 15)
+        print('Single dim values obtained', single_dim_P[rinds])
+        print('RGBs', R[rinds], G[rinds], B[rinds])
+    return single_dim_P
 
 def display_orig(img, orig_mask, args):
     imdisplay(img, title="Original Image (%s)" % args.input)
@@ -287,7 +406,6 @@ def plot_density_proj(R, G, B,
                       point_subsample=1000,
                       density_subsample=20000,
                       nbins=30):
-    """  """
     print('Generating 3D scatterplot with projected densities')
     n_pixels = len(R)
     if verbose: print("n_pixels", n_pixels)
@@ -396,6 +514,10 @@ if __name__ == '__main__':
         help='Whether to display the input image as HSV components')
     parser.add_argument('--hist_hsv_polar', dest='hist_hsv_polar', action='store_true',
         help='Displays a polar (circular) plot of the HSV hue values')
+    parser.add_argument('--show_twilight_img', dest='show_twilight_img', action='store_true',
+        help='Whether to display the input image based on its scalar twilight colormap values')
+    parser.add_argument('--hist_twilight_polar', dest='hist_twilight_polar', action='store_true',
+        help='Displays a polar (circular) plot of the color values from the cyclic twilight map')
     parser.add_argument('--hist_rgb_1d', dest='hist_rgb_1d', action='store_true',
         help='Displays a set of 1D histograms of RGB pixel values')
     parser.add_argument('--hist_rgb_3d', dest='hist_rgb_3d', action='store_true',
@@ -429,11 +551,14 @@ if __name__ == '__main__':
         args.scatter_densities = True
         args.manual_unfolded_1d = True
         args.projected_pixels = True
+        args.hist_twilight_polar = True
+        args.show_twilight_img = True
+    if args.hist_hsv_polar:
+        args.show_hsv = True
     main_single_display(args)
 
-
-
 # TODO: 2D densities with marginal curves
+
 
 
 #
