@@ -27,15 +27,15 @@ For instance, `--show_local_ents` displays a color map with local estimated patc
 
 #### Gradient Image
 
-The metrics can either be computed on an input image $`I`$ or on the per-channel *gradient magnitude image* 
+The metrics can either be computed on an input image $`I`$ or on the per-channel *gradient magnitude image*
 $`I_G=||\nabla I||_2`$ of that input (or both).
 
 Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
 
 #### Alpha Channel Masking
 
-Most measures are able to account for the presence of an alpha channel mask. 
-For instance, in the patch-based estimators, any patch with a masked pixel is ignored. 
+Most measures are able to account for the presence of an alpha channel mask.
+For instance, in the patch-based estimators, any patch with a masked pixel is ignored.
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
 #### Preprocessing
@@ -72,7 +72,7 @@ There are a few preprocessing options:
 
 ## Complexity Measures
 
-We briefly provide a basic description of the measures. 
+We briefly provide a basic description of the measures.
 They may be slightly altered (e.g., monotonically transformed or scaled) to give more aesthetically pleasing values.
 See the code for precise computational details.
 Notation: image $`I`$ with channels $`c\in C`$, set of patches $`P`$ (per channel, $`P_c`$), set of pixels $`V`$ (per channel, $`V_c`$), and empirical covariance matrix $`\widehat{C}`$.
@@ -98,14 +98,14 @@ Computes the weighted average of the Fourier coefficient values, with weights ba
 \mathcal{F}_w(I) = \frac{1}{Z_\gamma} \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y)\, \mathcal{I}_F(\psi_x,\psi_y),
 \,\;\text{ where}\;\;
 \mathcal{I}_F = \frac{1}{|C|}\sum_{c\in C} \log \left| \mathfrak{F}[c] \right|
-\;\;\text{and}\;\; 
+\;\;\text{and}\;\;
 Z_\gamma = \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y),
 ```
 denoting $`\mathfrak{F}[c]`$ as the Fourier transform of the single-channel image $`c`$, $`\Psi`$ as the set of frequency space coordinates, and $`\gamma(x,y) = |x| + |y|`$ as Manhattan distance weights.
 
 ### Average Local Patch Covariances
 
-Estimates the mean local intra-patch covariance over the image, written 
+Estimates the mean local intra-patch covariance over the image, written
 ```math
 \mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\left( \det\left(\widehat{C}(p)\right) + 1 \right)
 ```
@@ -113,7 +113,7 @@ Note that trace instead of determinant is used in the greyscale case.
 
 ### Average Gradient Magnitude
 
-Computes the mean value of the per-channel gradient magnitude over the image; i.e., 
+Computes the mean value of the per-channel gradient magnitude over the image; i.e.,
 ```math
 \mathcal{G}(I) = \frac{1}{|C|\,|V_c|} \sum_{c\in C} \sum_{s\in V_c} ||\nabla I(s)||_2
 ```
@@ -143,7 +143,7 @@ Note that trace instead of determinant is used in the greyscale case.
 
 ### Mean Pairwise Wasserstein Distance
 
-Measures the average Wasserstein distance (also called the Earth Mover's Distance or EMD) between image patches 
+Measures the average Wasserstein distance (also called the Earth Mover's Distance or EMD) between image patches
 
 ```math
 \mathcal{D}_\mathcal{W}(I) = \frac{1}{|P_C|^2} \sum_{p_c\in P_C}\sum_{q_c\in P_C} \mathcal{W}_\rho(p_c,q_c)
@@ -154,7 +154,7 @@ where $`\mathcal{W}_\rho`$ is the Wasserstein distance of order $`\rho`$ and $`P
 
 Computes the average pairwise distance between the first moments (means) of the patches across the image:
 ```math
-\mathcal{D}_{\mathcal{M},1}(I) = \frac{1}{|C|\,|P|^2} \sum_{p_i,p_j\in P} 
+\mathcal{D}_{\mathcal{M},1}(I) = \frac{1}{|C|\,|P|^2} \sum_{p_i,p_j\in P}
 || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2
 ```
 where $`\widehat{\mu}(p)\in\mathbb{R}^3`$ is the mean pixel value over patch $`p`$.
@@ -164,8 +164,8 @@ By default, this method utilizes *non-overlapping* patches.
 
 This measure is similar to the one just above, except that it considers the second moment (the covariance) as well:
 ```math
-\mathcal{D}_{\mathcal{M},2}(I) = \frac{1}{|P|^2} \sum_{p_i,p_j\in P} 
-\frac{1}{|C|}   || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2 + 
+\mathcal{D}_{\mathcal{M},2}(I) = \frac{1}{|P|^2} \sum_{p_i,p_j\in P}
+\frac{1}{|C|}   || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2 +
 \frac{\gamma_C}{|C|^2} || \widehat{\Sigma}(p_i) - \widehat{\Sigma}(p_j) ||_{1,1/2}
 ```
 where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`||M||_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.
@@ -188,14 +188,22 @@ The file `vis.py` includes several visualization capabilities, for understanding
 
 - `--scatter_densities`: displays a 3D scatter plot of a random subset of pixel values, with their projected 2D marginal densities.
 
-- `--manual_unfolded_1d`: displays a 1D histogram of the pixel values with respect to some arbitrarily defined ordering of 3D colourspace on the 1D real line, via a manually chosen colormap 
+- `--manual_unfolded_1d`: displays a 1D histogram of the pixel values with respect to some arbitrarily defined ordering of 3D colourspace on the 1D real line, via a manually chosen colormap
 $`C:[0,1]\rightarrow[0,1]^3`$.
 
 - `--projected_pixels`: displays a random subset of coloured pixel points projected in their PCA subspace.
 
+- `--show_hsv`: displays the HSV decomposition
+
+- `--hist_hsv_polar`: shows the polar plot of the cyclic hue value histogram
+
+- `--show_twilight_img`: displays the image, scalarized according to the cyclic *twilight* colourmap
+
+- `--hist_twilight_polar`: shows the polar plot of the cyclic *twilight* colourmap value histogram
+
 - `--all`: displays all the aforementioned visualizations.
 
-It can also write the histogram values of the 1D ("manually unfolded") histogram to a file 
+It can also write the histogram values of the 1D ("manually unfolded") histogram to a file
 via `--write_1d_histo_vals --output_file histo_output.csv`.
 
 For complete details, run `python vis.py --help`.
@@ -207,7 +215,6 @@ For complete details, run `python vis.py --help`.
 
 ## Acknowledgements
 
-The differential entropy measures utilize the *Non-parametric Entropy Estimation Toolbox* by Greg Ver Steeg. 
+The differential entropy measures utilize the *Non-parametric Entropy Estimation Toolbox* by Greg Ver Steeg.
 See the [**NPEET** Github Repo](https://github.com/gregversteeg/NPEET) (MIT licensed).
 It implements the approach in Kraskov et al, 2004, *Estimating Mutual Information*.
-

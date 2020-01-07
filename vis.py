@@ -233,7 +233,9 @@ def display_hsv(img, orig_mask, args, fix_color_interval=True):
             ax = axs[i,j]
             A = hsv_img[:,:,c - 1] if c > 0 else img # H, S, V
             cm_choice = 'hsv' if c == 1 else 'magma'
-            ims = ax.imshow(A, interpolation='bicubic',
+            # Note: nearest instead of bicubic avoids some odd interpolation
+            # errors, especially for cyclic colormaps
+            ims = ax.imshow(A, interpolation='nearest',
                             vmin=0, vmax=1, cmap=cm_choice)
             q.append(ims)
             ax.set_title(name.capitalize())
@@ -269,20 +271,36 @@ def plot_polar_generic(img, orig_mask, args, f, apply_mask=True, log_histo=False
         f : [0,1] -> [0,1]^3
     is used to compute the scalar image used in or processed for the polar plot.
     """
+    f = _to_cm_function(f)
     H, W, C = img.shape
-    img = img[:,:,0:3] / 255
+    img = img[:,:,0:3] / 255 * 0.999
+    img += 1e-5*np.random.rand(*img.shape)
     # RGB -> index value
-    R, G, B = img[:,:,0], img[:,:,1], img[:,:,2]
+    R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
     tI = transform_rgb_to_cmap_index_vector(f, R, G, B, verbose=True).reshape(H,W)
+    print("Index image shape", tI)
     # TODO
+    if not orig_mask is None and apply_mask:
+        midvalue = 128
+        bool_mask = (orig_mask > midvalue)
+        H = tI[bool_mask]
+        print(H.shape, bool_mask.shape)
+        rmnum = np.prod(tI.shape) - np.sum(bool_mask)
+        print('\tRemoving', rmnum, "masked values (%.2f%%)"
+              % (100 * rmnum / np.prod(tI.shape)))
+    else:
+        H = tI.flatten()
+    _generate_polar_plot(H, f, log_histo=log_histo)
+
+def _to_cm_function(f):
+    # TODO option for manually defined mapping?
+    if type(f) is str:
+        return plt.cm.get_cmap(f)
 
 def plot_colour_mapped_scalar_image(img, orig_mask, args, C):
-
     # TODO: option to pass C as a function
-
     Cname = C
-    if type(C) is str:
-        C = plt.cm.get_cmap(C)
+    C = _to_cm_function(C)
     img = img[:,:,0:3] / 255
     H, W, _ = img.shape
     # RGB -> scalar index value
@@ -290,11 +308,10 @@ def plot_colour_mapped_scalar_image(img, orig_mask, args, C):
     SI = transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True).reshape(H, W)
     #
     fig, ax = plt.subplots()
-    ims = ax.imshow(SI, interpolation='bicubic',
+    ims = ax.imshow(SI, interpolation='nearest',
                     vmin=0, vmax=1, cmap=Cname)
     fig.colorbar(ims, #plt.cm.ScalarMappable(norm=norm, cmap=C),
                  ax=ax, orientation='vertical', fraction=0.1)
-
 
 def plot_polar_hsv(img, orig_mask, args, apply_mask=True, log_histo=False):
     print('Generating polar plot')
@@ -311,19 +328,23 @@ def plot_polar_hsv(img, orig_mask, args, apply_mask=True, log_histo=False):
               % (100 * rmnum / np.prod(hsv_img[:,:,0].shape)))
     else:
         H = hsv_img[:,:,0].flatten()
-    print( H.min(), H.max(), H.mean(), H[np.random.randint(0,H.shape[0],50)] )
+    xticklabels = [ 'Red', 'Orange', 'L. Green', 'Green',
+                    'L. Blue', 'Blue', 'Purple', 'Pink'   ]
+    _generate_polar_plot(H, plt.cm.hsv, xlabels=xticklabels, log_histo=log_histo)
+
+def _generate_polar_plot(H, ff, xlabels=None, log_histo=False, n_bins=20):
+    print("H min/max/mean/samples\n",
+        H.min(), H.max(), H.mean(), H[np.random.randint(0,H.shape[0],50)] )
     H = 2 * np.pi * H
     m = H.shape[0]
-    print('Num hue values in histogram:', m)
-    fig = plt.figure() #figsize=(8,8))
-
-    N = 50 # N_bins
+    print('Num values in histogram:', m)
+    fig = plt.figure()
+    #-----------------#
+    N = n_bins # N_bins
     bottom = 0.0
     max_height = 1.0
-
+    #-----------------#
     theta = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
-#    theta = np.linspace(0.0, 1.0, N, endpoint=False)
-
     # hist : array -> The values of the histogram. (counts)
     # bin_edges : array of dtype float -> Return the bin edges (length(hist)+1).
     hist, bin_edges = np.histogram(H, bins = N, range=(0.0, 2 * np.pi))
@@ -334,41 +355,26 @@ def plot_polar_hsv(img, orig_mask, args, apply_mask=True, log_histo=False):
     radii = max_height * hist / m
     width = (2 * np.pi) / N
 
-    # axes = [fig.add_axes([0.1,0.1,0.9,0.9],polar=True,
-    #         label = "axes{}".format(i))
-    #         for i in range(len(variables))]
-    # l, text = axes[0].set_thetagrids(angles,
-    #                                  labels=variables)
-    # [txt.set_rotation(angle-90) for txt, angle
-    #      in zip(text, angles)]
-
     ax = plt.subplot(111, polar=True)
-    #ax.set_xticklabels(['N', '', 'W', '', 'S', '', 'E', ''])
     ax.set_yticklabels([])
-
-    ax.set_xticklabels(['Red', 'Orange', 'L. Green', 'Green',
-                        'L. Blue', 'Blue', 'Purple', 'Pink'])
-    # label_angles = [0, 45, 0, 135, 0,
-    #                 90, 0, 45, 0]
+    if xlabels is None:
+        xlabels = [""] * 8
+    ax.set_xticklabels(xlabels)
     centers = [ 'left', 'left', 'center', 'right',
                 'right', 'right', 'center', 'left' ]
-    #plt.xticks(rotation='vertical')
-
     for i, label in enumerate(ax.get_xticklabels()):
-        label.set_ha(centers[i]) # set horz alignments
-    #    label.set_rotation(label_angles[i])
+        label.set_ha(centers[i])
 
     bars = ax.bar(theta, radii, width=width, bottom=bottom)
 
     # Use custom colors and opacity
     assert len(radii) == N
     for i, (r, bar) in enumerate( zip(radii, bars) ):
-#        bar.set_facecolor(plt.cm.hsv(r / 10.))
         curr_val = i / N
-        bar.set_facecolor( plt.cm.hsv(curr_val) )
+        bar.set_facecolor( ff(curr_val) )
         bar.set_alpha(0.99)
 
-def transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True, n_search_bins=100):
+def transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True, n_search_bins=200):
     """ Takes normed image values """
     if type(C) is str: C = plt.cm.get_cmap(C)
     # Use the colormap to get the bin values
@@ -555,6 +561,8 @@ if __name__ == '__main__':
         args.show_twilight_img = True
     if args.hist_hsv_polar:
         args.show_hsv = True
+    if args.hist_twilight_polar:
+        args.show_twilight_img = True
     main_single_display(args)
 
 # TODO: 2D densities with marginal curves
