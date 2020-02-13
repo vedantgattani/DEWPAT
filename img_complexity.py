@@ -756,7 +756,10 @@ if grad_and_orig: del args_d['use_gradient_image']
 # Meant to output a CSV
 if os.path.isdir(path):
     print(','.join(S))
-    for f in [f for f in os.listdir(path) if f.endswith('.jpg') or f.endswith('.png')]:
+    usables = [ '.jpg', '.png' ]
+    usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
+    _checker = lambda k: any( k.endswith(yy) for yy in usables )
+    for f in [ f for f in os.listdir(path) if _checker(f) ]:
         compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
         if grad_and_orig: # Just did original
             compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
