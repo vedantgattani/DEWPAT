@@ -11,8 +11,18 @@ from skimage import io
 ### Visualization helpers ###
 
 # Helper function for displays
-def imdisplay(inim, title, colorbar=False, cmap=None):
+def imdisplay(inim, title, colorbar=False, cmap=None, mask=None):
+    """
+    mask - zeros = masked (NaNs), ones = original values
+    """
     fig, ax = plt.subplots()
+    if (not mask is None) and (not type(mask) is bool):
+        if type(cmap) is str: 
+            cmap = matplotlib.cm.get_cmap(name=cmap)
+        cmap.set_bad(color='white')
+        inim = inim.copy()
+        inim[ mask == 0 ] = np.nan
+        #print('Setting masked pixels to mapped NaNs')
     imm = ax.imshow(inim) if cmap is None else ax.imshow(inim, cmap=cmap)
     plt.title(title)
     if colorbar: fig.colorbar(imm)

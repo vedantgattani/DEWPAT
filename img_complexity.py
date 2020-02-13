@@ -364,7 +364,7 @@ def compute_complexities(impath,    # Path to input image file
                                                                  disk(local_entropy_disk_size),
                                                                  mask=current_mask_local_ent)
                             for i in range(3) ]).mean(axis=0)
-            if show_locent_image: imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma')
+            if show_locent_image: imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=alpha_mask)
             return np.mean(le_img)
         add_new(channelwise_local_entropies(img), 1)
 
@@ -436,7 +436,8 @@ def compute_complexities(impath,    # Path to input image file
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
-            if show_loccov_image: imdisplay(local_covar_img, 'Local Covariances', cmap='viridis', colorbar=True)
+            if show_loccov_image: imdisplay(local_covar_img, 'Local Covariances', cmap = 'viridis', 
+                                            colorbar = True, mask = alpha_mask)
             return np.mean(local_covar_img)
         add_new(local_patch_covariance(img), 3)
 
@@ -452,7 +453,7 @@ def compute_complexities(impath,    # Path to input image file
             grad_img = generate_gradient_magnitude_image(img)
             if show_gradient_img:
                 gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
-                imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True)
+                imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True, mask = alpha_mask)
             if using_alpha_mask:
                 grad_img[alpha_mask <= 0] = 0
             return np.mean(grad_img)
