@@ -11,7 +11,7 @@ from skimage import io
 ### Visualization helpers ###
 
 # Helper function for displays
-def imdisplay(inim, title, colorbar=False, cmap=None, mask=None):
+def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax=None):
     """
     mask - zeros = masked (NaNs), ones = original values
     """
@@ -23,7 +23,9 @@ def imdisplay(inim, title, colorbar=False, cmap=None, mask=None):
         inim = inim.copy()
         inim[ mask == 0 ] = np.nan
         #print('Setting masked pixels to mapped NaNs')
-    imm = ax.imshow(inim) if cmap is None else ax.imshow(inim, cmap=cmap)
+    imm = ( ax.imshow(inim, vmin=vmin, vmax=vmax) 
+            if cmap is None else 
+            ax.imshow(inim, cmap=cmap, vmin=vmin, vmax=vmax) )
     plt.title(title)
     if colorbar: fig.colorbar(imm)
 
