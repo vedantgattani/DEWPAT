@@ -389,6 +389,7 @@ def load_helper(image_path, verbose=True):
         R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
         orig_mask = None
     # At this point, img is always H X W x 3; mask is either None or H x W (boolean/byte)
+    # R, G, and B are vectors
     return img, R, G, B, orig_mask
 
 ### Block extraction and pairwise moment comparison methods ###
