@@ -3,47 +3,86 @@ import warnings, matplotlib.pyplot as plt
 from skimage import data, segmentation, color
 from skimage.future import graph
 from sklearn import cluster
+from scipy import interpolate
+from collections import Counter
+
+# TODO save json of counters and matrices for folders
 
 def main():
     ### Argument parsing ###
     parser = argparse.ArgumentParser(description='Image clustering/segmentation analysis.')
     parser.add_argument('input', type=str, help='Input: either a folder or an image')
-    parser.add_argument('--labeller', dest='labeller', type=str, default='optics',
-        choices=['affinity_prop', 'dbscan', 'optics', 'graph_cuts'],
+    parser.add_argument('--labeller', dest='labeller', type=str, default='kmeans',
+        choices=['affinity_prop', 'dbscan', 'optics', 'graph_cuts', 'kmeans'],
         help='Labelling (segmentation and/or clustering) algorithm.')
-    parser.add_argument('--blur', type=float, default=0.0,
-        help='Specify Gaussian blur standard deviation applied to the image (default: none)')
+    parser.add_argument('--blur', type=float, default=1.0,
+        help='Specify Gaussian blur standard deviation applied to the image (default: 1)')
     parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
+    parser.add_argument('--resize', type=float, default=0.5,
+        help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
     # Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
-    group_g.add_argument('--dbscan_eps', dest='dbscan_eps', type=float, default=0.1,
+    #--
+    group_g.add_argument('--dbscan_eps', dest='dbscan_eps', type=float, default=1.0,
         help='Epsilon neighbourhood used in DBSCAN.')
-    group_g.add_argument('--dbscan_min_neb_size', dest='dbscan_min_neb_size', type=int, default=1,
+    group_g.add_argument('--dbscan_min_neb_size', dest='dbscan_min_neb_size', type=int, default=20,
         help='Min samples needed for core point designation in a neighbourhood. Used in DBSCAN.')
+    #--
     group_g.add_argument('--gc_compactness', dest='gc_compactness', type=float, default=10.0,
         help='Graph cuts superpixel compactness.')
-    group_g.add_argument('--gc_n_segments', dest='gc_n_segments', type=int, default=100,
+    group_g.add_argument('--gc_n_segments', dest='gc_n_segments', type=int, default=300,
         help='Graph cuts n_segments used in initialization.')
     group_g.add_argument('--gc_slic_sigma', dest='gc_slic_sigma', type=float, default=0.0,
-        help='Graph cuts Gaussian kernel width for superpixel initialization.')
-    
+        help='Graph cuts Gaussian kernel width for superpixel initialization.')    
+    #--
+    group_g.add_argument('--kmeans_k', dest='kmeans_k', type=int, default=4,
+        help='Number of clusters for K-means.')    
+
     # Analysis
     group_a = parser.add_argument_group('Analysis parameters')
     group_a.add_argument('--normalize_matrix', action='store_true',
         help='Whether to normalize the transition matrix')
     group_a.add_argument('--no_print_transitions', action='store_true',
         help='Pass flag to prevent printing the transition matrix')
+    group_a.add_argument('--keep_bg', action='store_true',
+        help='Keeps the background label when computing the transition matrix')
     # Visualization
+    # TODO heatmap with labels on scale (colorbar)
     parser.add_argument('--display', dest='display', action='store_true',
         help='Whether to display the resulting labelling')
     args = parser.parse_args()
 
     ### Read in the image ###
-    img, R, G, B, mask = utils.load_helper(args.input) 
+    #img, R, G, B, mask = utils.load_helper(args.input) 
+    
+    img = skimage.io.imread(args.input)
+    if args.verbose: print('Loaded', args.input)
+    n_channels = img.shape[2]
+
+    # Downscale image, if desired
+    resize_factor_main = args.resize
+    assert resize_factor_main > 0.0, "--resize must be positive"
+    running_resize = False
+    if abs(resize_factor_main - 1.0) > 1e-4:
+        running_resize = True
+        if args.verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
+        img = skimage.transform.rescale(img, scale=resize_factor_main,
+                anti_aliasing=True, multichannel=True)
+        img = utils.conv_to_ubyte(img)
+        if args.verbose: print("Resized dims:", img.shape)
+    mask = None
+    if n_channels == 4:
+        a = img[:, :, 3]
+        img = img[:, :, :3]
+        mask = a.copy()
+        mask[ a >  128 ] = 1 # 255
+        mask[ a <= 128 ] = 0
+        # Zero out the background
+        img *= mask[:,:,np.newaxis]
+    
     H, W, C = img.shape
     if mask is None: mask = np.ones( (H,W) )
-    if args.verbose: print('Loaded', args.input)
     # Gaussian filter if desired
     if args.blur > 1e-8:
         if args.verbose: print("\tBlurring with sigma =", args.blur)
@@ -51,17 +90,20 @@ def main():
     if args.verbose: 
         print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,C), 
               img.min(0).min(0), img.max(0).max(0))
-        print('\tNum masked values:', H*W - mask.sum(), "/", H*W)
+        print('\tNum masked values:', H*W - (mask > 0).sum(), "/", H*W)
+    # Move from byte to float
+    #img = skimage.img_as_float(img) # 255.0
 
     ### Label (cluster/segment) the image ###
     label_image = label(img, mask, args.labeller, args)
     
     ### Compute transition matrix ###
-    M = transition_matrix(label_image, args.normalize_matrix, # TODO
-            print_M = (not args.no_print_transitions) )
+    M = transition_matrix(label_image, args.normalize_matrix, 
+            print_M = (not args.no_print_transitions), args=args )
 
     ### Visualization ###
-    vis_label_img(img, label_image, args)
+    if args.display:
+        vis_label_img(img, label_image, args)
     plt.show()
 
 def label(image, mask, method, args):
@@ -77,6 +119,8 @@ def cluster_vecs(X, method, args):
     Input: X (S x D, row vector per datum)
     Output: cluster labels vector (S, integer)
     """
+    X = X.astype(float)
+    #print(X, type(X))
     if   method == 'affinity_prop': 
         clusterer = cluster.AffinityPropagation(affinity = 'euclidean',
                                                 damping = 0.5) 
@@ -85,11 +129,14 @@ def cluster_vecs(X, method, args):
                                    min_samples = args.dbscan_min_neb_size,
                                    metric = 'euclidean') 
     elif method == 'optics':          
-        clusterer = cluster.OPTICS(min_samples = 20,
+        clusterer = cluster.OPTICS(min_samples = 0.05,
                                    max_eps = np.inf,
                                    xi = 0.05)
+    elif method == 'kmeans':
+        clusterer = cluster.MiniBatchKMeans(n_clusters = args.kmeans_k, batch_size=100)
     else:
         raise ValueError('Unknown method' + method)
+    if args.verbose: print("\tRunning clustering via", method)
     return clusterer.fit_predict(X)
 
 def cluster_based_img_seg(image, mask, method, args):
@@ -99,29 +146,43 @@ def cluster_based_img_seg(image, mask, method, args):
     """
     # Extract colour-based vectors
     # TODO micropatches option
-    vecs, indices = extract_vecs(image, mask) # TODO 
+    vecs        = extract_vecs(image, mask) 
+    if args.verbose: print("\tObtained vectors:", vecs.shape)
     # Cluster colour vectors to obtain labels
-    vec_labels    = cluster_vecs(vecs) 
-    # Post-process to remove noise 
-    # E.g., noise labels are -1 in OPTICS and DBSCAN
-    vec_labels    = post_process_labels(vec_labels, vec, indices, mask) # TODO
+    vec_labels  = cluster_vecs(vecs, method, args) 
+    if args.verbose: print("\t\tComplete")
     # Use the image positions to reform the image
     # Background pixels are labeled -1
-    label_image   = reform_label_image(vec_labels, indices, mask) # TODO
+    label_image = reform_label_image(vec_labels, mask) 
+    if args.verbose: print("\tFinished reforming label image")
     return label_image
 
-def reform_label_image(vec_labels, indices, mask):
+def extract_vecs(image, mask): return image[ mask > 0 ]
+
+def reform_label_image(vec_labels, mask):
     H, W = mask.shape
-    # TODO 
-
+    # Form a label image (initialize to -2)
+    label_image = np.zeros( (H,W) ) - 2
+    # Set unmasked parts
+    label_image[mask > 0] = vec_labels
+    ### Post-process to remove noise labels ###
+    # E.g., noise labels are -1 in OPTICS and DBSCAN -> convert to nan
+    label_image[ label_image == -1 ] = np.nan
+    # Convert to masked array
+    a = np.ma.masked_invalid(label_image)
+    xx, yy = np.meshgrid(np.arange(0, W), np.arange(0, H))
+    # Retrieve only valid values
+    x1 = xx[ ~a.mask ] # x indices
+    y1 = yy[ ~a.mask ] # y indices
+    new_data = a[ ~a.mask ] # unmasked data values
+    # Interpolate via nearest neighbours
+    G = interpolate.griddata( (x1, y1), new_data.ravel(),
+                              (xx, yy), method = 'nearest' )
+    label_image = G
+    ### Move -2 -> -1 (background signal) ###
+    label_image[ label_image == -2 ] = -1
+    assert not np.isnan(label_image).any() 
     return label_image
-
-def post_process_labels(vec_labels, vec, indices, mask):
-    # TODO
-
-    # Make sure no invalid values
-    assert not any(vec_labels == -1), "Unexpected noise label. Try changing the settings."
-    return vec_labels
 
 def vis_label_img(image, labels_img, args):
     """
@@ -151,16 +212,57 @@ def vis_label_img(image, labels_img, args):
         ax[j, k].imshow(I)
         ax[j, k].axis('off')
         ax[j, k].set_title(_t[i])
-#    for a in ax: a.axis('off')
+    # for a in ax: a.axis('off')
     plt.tight_layout()
 
-def transition_matrix(labels, normalize, print_M):
+def transition_matrix(L, normalize, print_M, args):
     """
     Input: label image (M x N, integer in [1,K])
     Output: K x K transition count/probability matrix (M_ij = count(i->j))
     """
-    pass
-    # TODO
+    H, W = L.shape
+    Hpp, Wpp = H + 1, W + 1
+    allowed_labels = list(set(L.flatten().astype(int).tolist()))
+    n_labels = len(allowed_labels)
+    n_masked = (L == -1).sum()
+    #print('p',allowed_labels)
+    # Shifted label images
+    L_left  = np.c_[ L, -np.ones(H) ]
+    L_right = np.c_[ -np.ones(H), L ]
+    L_up    = np.r_[ [-np.ones(W)], L ]
+    L_down  = np.r_[ L, [-np.ones(W)] ]
+    #print(H,W,L_up.shape,L_down.shape, L_left.shape, L_right.shape)
+    horz_shift = np.stack( (L_left, L_right), axis=-1 ).reshape(H*Wpp, 2)
+    vert_shift = np.stack( (L_up, L_down),    axis=-1 ).reshape(Hpp*W, 2)
+    all_tuples = np.concatenate( (horz_shift, vert_shift), axis = 0 ).astype(int).tolist()
+    if args.verbose: print('\tAssembled', len(all_tuples), 'edge pairs for transition estimation')
+    if not args.keep_bg:
+        if -1 in allowed_labels: allowed_labels.remove(-1) # 
+        n_labels = len(allowed_labels)
+        all_tuples = [ elem for elem in all_tuples if not (-1 in elem) ]
+        if args.verbose: print("\t\tPost-bg removal:", len(all_tuples), "remaining")
+    # Stringify the tuples
+    all_tuples = map(lambda s: ",".join(map(str, s)), all_tuples)
+    transition_counters = Counter(all_tuples)
+    # Generate matrix form of transition
+    M = np.zeros( (n_labels, n_labels) )
+    for i, labi in enumerate(allowed_labels):
+        for j, labj in enumerate(allowed_labels):
+            key1 = str(labi) + "," + str(labj)
+            key2 = str(labj) + "," + str(labi)
+            M[i,j] = int(transition_counters[key1] + transition_counters[key2])
+    if normalize: M = M / M.sum(axis=1)[:,np.newaxis]
+    else:         M = M.astype(int)
+    if print_M or args.verbose: 
+        if args.verbose: print("Transition counts:", transition_counters)
+        print('Labels:', allowed_labels)
+        if args.verbose: 
+            print('Column sums:', M.sum(1), '| Total:', np.tril(M,k=0).sum())
+            extot = 2*H*W + W + H
+            print('N_expected_transitions:', extot, '(unmasked: %d)' % (extot - n_masked - H - W))
+        print('Transition matrix')
+        print(M)
+    return M, transition_counters
 
 def segment(image, method, mask, args):
     """ Spatially aware image segmentation """

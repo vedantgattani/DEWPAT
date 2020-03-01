@@ -138,6 +138,7 @@ Estimates the differential entropy of the distribution of patches over the image
 Computes the log-determinant of the global covariance matrix over patches in the image, where again each multi-channel patch is unfolded into a single vector; i.e.,
 ```math
 \mathcal{C}_{G}(I) = \log\left( \det\left( \widehat{C}(P) \right) \right)
+                                   max_eps = np.inf,
 ```
 Note that trace instead of determinant is used in the greyscale case.
 
@@ -208,10 +209,27 @@ via `--write_1d_histo_vals --output_file histo_output.csv`.
 
 For complete details, run `python vis.py --help`.
 
+## Clustering and Segmentation
+
+The file `seg.py` includes some clustering/segmentation capabilities in pixel space.
+It also includes transition matrix analysis calculations.
+
+Run `python seg.py --help` gives a complete list of possible options.
+
+### Examples
+- Run the clustering under default settings, printing verbosely, and display the resulting segmented image at the end:
+
+  `python seg.py <target> --display --verbose`
+  
+- Segments the image (after resizing and blurring) via graph cuts with a specified compactness and superpixel initialization parameters:  
+  
+  `python seg.py <target> --display --labeller graph_cuts --gc_compactness 20 --resize 1.0 --blur 0.25 --gc_n_segments 500 --verbose`
+
 ## TODO
 
 - Operations on scalar images are not optimized
 - EMD method likely has a bug in the alpha handling. Having a separate resizing argument is also not ideal.
+- seg matrix should be bistochastic when normalized?
 
 ## Acknowledgements
 
