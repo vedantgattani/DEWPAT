@@ -214,7 +214,8 @@ For complete details, run `python vis.py --help`.
 The file `seg.py` includes some clustering/segmentation capabilities in pixel space.
 It also includes transition matrix analysis calculations.
 
-Run `python seg.py --help` gives a complete list of possible options.
+Run `python seg.py --help` gives a complete list of possible options. 
+I also recommend running with `--verbose` so you know it is acting as intended.
 
 ### Examples
 - Run the clustering under default settings, printing verbosely, and display the resulting segmented image at the end:
@@ -224,6 +225,10 @@ Run `python seg.py --help` gives a complete list of possible options.
 - Segments the image (after resizing and blurring) via graph cuts with a specified compactness and superpixel initialization parameters:  
   
   `python seg.py <target> --display --labeller graph_cuts --gc_compactness 20 --resize 1.0 --blur 0.25 --gc_n_segments 500 --verbose`
+
+- Segments the image with k-means using `k` values from `k.csv`, writes the mean segmented images to `segs_dir`, and writes a csv of cluster data to `cluster_data.csv`:
+
+  `python seg.py <target> --kmeans_k_file_list k.csv --verbose --write_mean_segs --mean_seg_output_dir segs_dir --seg_stats_output_file cluster_data.csv`
 
 ## TODO
 
