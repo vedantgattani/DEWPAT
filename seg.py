@@ -107,16 +107,21 @@ def main():
     if not (args.seg_stats_output_file is None):
         if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
         with open(args.seg_stats_output_file, "w") as _fh:
+            #_fh.write("file,cluster_ind,mu_C_1,mu_C_2,mu_C_3,n_member_pixels,percent_member_pixels\n")
+            _fh.write("image,cluster,R,G,B,frequency,percent\n")
             for key in file_outputs.keys(): # For each file
                 tmat, D_img = file_outputs[key]
                 Ds = D_img['cluster_info']['cluster_stats']
+                clines = []
                 for cluster_label in Ds.keys(): # For each cluster
                     D = Ds[cluster_label]
-                    line = ",".join( map(str, 
-                            [ key, D['label_number'], D['mean_C1'], D['mean_C2'],
-                              D['mean_C3'], D['n_member_pixels'], 
-                              D['percent_member_pixels'] ]) )
-                    _fh.write(line + '\n')
+                    #line = ",".join( map(str, 
+                    clines.append( [ key, D['label_number'], D['mean_C1'], D['mean_C2'],
+                               D['mean_C3'], D['n_member_pixels'], 
+                               D['percent_member_pixels'] ] ) # ) )
+                clines.sort(key = lambda a: a[6], reverse = True)
+                clines = [ ",".join( map(str, a) ) for a in clines ]
+                for line in clines: _fh.write(line + '\n')
     
 def main_helper(img_path, args):
     #img_filename_extless, img_file_extension = os.path.splitext(img_path)
