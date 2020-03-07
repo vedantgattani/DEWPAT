@@ -70,15 +70,20 @@ def write_manual_unfolded_1d(folder, output_filename, verbose=True):
         The second row holds the tuple colors per bin.
     Each row after that holds the bin counts for each image, with the first column holding the filename.
     """
-    assert os.path.isdir(folder), "Input " + folder + " must be a directory"
+    #assert os.path.isdir(folder), "Input " + folder + " must be a directory"
+    
     assert not os.path.exists(output_filename), "Output filename " + output_filename + " already exists"
     def append_to_file(string):
         if not string.endswith("\n"): string += '\n'
         with open(output_filename, "a") as file_handle:
             file_handle.write(string)
             file_handle.flush()
-    exts = ['.png', '.jpg']
-    images = [os.path.join(folder,f) for f in os.listdir(folder) if any(f.endswith(ext) for ext in exts)]
+    exts  = ['.png', '.jpg']
+    exts += [ _e.upper() for _e in exts ]
+    if os.path.isdir(folder):
+        images = [os.path.join(folder,f) for f in os.listdir(folder) if any(f.endswith(ext) for ext in exts)]
+    else:
+        images = [folder] # folder is actually just an img file
     N = len(images)
     print('Generating CSV file (for %d files). Writing to' % N, output_filename)
     prev_bins, prev_colours = None, None

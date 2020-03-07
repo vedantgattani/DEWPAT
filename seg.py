@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--write_mean_segs', action='store_true', dest='write_mean_segs',
                         help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
     parser.add_argument('--mean_seg_output_dir', default=None,
-                        help='Specifies the folder to which saved mean segments must be written')
+                        help='Specifies the folder to which saved mean segment images must be written')
     parser.add_argument('--seg_stats_output_file', default=None,
                         help='Specifies output file to which segment statistics should be written')
     # Labeller params
@@ -73,6 +73,7 @@ def main():
     # Ensure we have somewhere to write the mean segs, if needed
     if args.write_mean_segs:
         assert not args.mean_seg_output_dir is None, "--write_mean_segs requires --mean_seg_output_dir"
+    if not args.mean_seg_output_dir is None: args.write_mean_segs = True
     # Ensure clear choice for k in k means
     _msg_1 = "Specify only one of {kmeans_k, kmeans_k_file_list, kmeans_auto_crit}"
     if not (args.kmeans_k_file_list is None): assert args.kmeans_k is None, _msg_1 
