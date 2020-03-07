@@ -5,6 +5,9 @@ from skimage.future import graph
 from sklearn import cluster
 from scipy import interpolate
 from collections import Counter
+from utils import Formatter
+
+_glob_form = Formatter()
 
 # TODO save json of counters and matrices for folders
 
@@ -25,6 +28,8 @@ def main():
                         help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
     parser.add_argument('--mean_seg_output_dir', default=None,
                         help='Specifies the folder to which saved mean segments must be written')
+    parser.add_argument('--seg_stats_output_file', default=None,
+                        help='Specifies output file to which segment statistics should be written')
     # Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
     #--
@@ -59,7 +64,7 @@ def main():
     group_a.add_argument('--keep_bg', action='store_true',
         help='Keeps the background label when computing the transition matrix')
     # Visualization
-    # TODO heatmap with labels on scale (colorbar)
+    # TODO heatmap with labels on scale (colorbar), superpixels
     parser.add_argument('--display', dest='display', action='store_true',
         help='Whether to display the resulting labelling')
     args = parser.parse_args()
@@ -69,7 +74,7 @@ def main():
     if args.write_mean_segs:
         assert not args.mean_seg_output_dir is None, "--write_mean_segs requires --mean_seg_output_dir"
     # Ensure clear choice for k in k means
-    _msg_1 = "Specify only one of kmeans_k, kmeans_k_file_list, kmeans_auto_crit"
+    _msg_1 = "Specify only one of {kmeans_k, kmeans_k_file_list, kmeans_auto_crit}"
     if not (args.kmeans_k_file_list is None): assert args.kmeans_k is None, _msg_1 
     if not (args.kmeans_k is None): assert args.kmeans_k_file_list is None, _msg_1 
 
@@ -82,6 +87,7 @@ def main():
         args.kmeans_specifier = None
 
     ### Handle images ###
+    file_outputs = {}
     if os.path.isdir(args.input):
         usables = [ '.jpg', '.png' ]
         usables = list(set( usables + [ b.upper() for b in usables ] + 
@@ -89,11 +95,27 @@ def main():
         _checker = lambda k: any( k.endswith(yy) for yy in usables )
         targets = [ os.path.join(args.input, f) 
                     for f in os.listdir(args.input) if _checker(f) ]
-        for t in targets: main_helper(t, args)
+        for t in targets: 
+            file_outputs[t] = main_helper(t, args)
     elif os.path.isfile(args.input):
-        main_helper(args.input, args)
+        file_outputs[args.input] = main_helper(args.input, args)
     else:
         raise ValueError('Non-existent target input ' + args.input)
+
+    # Write seg info results
+    if not (args.seg_stats_output_file is None):
+        if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
+        with open(args.seg_stats_output_file, "w") as _fh:
+            for key in file_outputs.keys(): # For each file
+                tmat, D_img = file_outputs[key]
+                Ds = D_img['cluster_info']['cluster_stats']
+                for cluster_label in Ds.keys(): # For each cluster
+                    D = Ds[cluster_label]
+                    line = ",".join( map(str, 
+                            [ key, D['label_number'], D['mean_C1'], D['mean_C2'],
+                              D['mean_C3'], D['n_member_pixels'], 
+                              D['percent_member_pixels'] ]) )
+                    _fh.write(line + '\n')
     
 def main_helper(img_path, args):
     #img_filename_extless, img_file_extension = os.path.splitext(img_path)
@@ -153,27 +175,72 @@ def main_helper(img_path, args):
 
     ### Label (cluster/segment) the image ###
     label_image = label(img, mask, args.labeller, args)
+    mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
+                                    bg_color = (0.0, 0.0, 0.0), kind = 'avg')
     # Write mean-cluster-valued image out if desired
     if args.write_mean_segs:
         int_mask = (mask*255).reshape(H,W,1)
-        mean_segs = color.label2rgb(label_image, image = img, bg_label = -1, 
-                                    bg_color = (0.0, 0.0, 0.0), kind = 'avg')
-        mean_segs = np.concatenate( (mean_segs, int_mask), axis = 2 )
+        mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
         if not os.path.isdir(args.mean_seg_output_dir):
             os.makedirs(args.mean_seg_output_dir)
         cfname = os.path.join(args.mean_seg_output_dir, 
                               img_file_basename_extless + ".mean_seg.png")
         if args.verbose: print('\tSaving mean seg image to', cfname)
-        skimage.io.imsave(fname = cfname, arr = mean_segs)
+        skimage.io.imsave(fname = cfname, arr = mean_segs4)
 
-    ### Compute transition matrix ###
+    ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
+    img_stats = label_img_to_stats(img, mask, label_image, mean_seg_img, args.verbose)
 
     ### Visualization ###
-    if args.display:
-        vis_label_img(img, label_image, args)
+    if args.display: vis_label_img(img, label_image, args)
     plt.show()
+
+    if args.verbose: print('Finished processing', img_path)
+    return M, img_stats
+
+def label_img_to_stats(img, mask, label_img, mean_seg_img, verbose):
+    """
+    Returns a dictionary of label img and initial image stats
+    This includes a subdictionary of information per label set (cluster)
+    """
+    # 
+    H, W, C = img.shape
+    allowed_labels = list(set(label_img.flatten().astype(int).tolist()))
+    n_labels = len(allowed_labels)
+    n_masked = (label_img == -1).sum()
+    n_unmasked = (H*W) - n_masked
+    cluster_info = { 'n_labels' : n_labels, 'allowed_labels' : allowed_labels }
+    cluster_stats = {}
+    for label in allowed_labels:
+        if label == -1: continue # Ignore bg
+        bool_indexer = np.logical_and(mask != 0, label_img == label)
+        orig_vals = img[bool_indexer] # Valid values in the current cluster
+        mean_vals = mean_seg_img[bool_indexer]
+        mean_cluster_value = orig_vals.mean(0)
+        premeaned_val = mean_vals.mean(0)
+        cluster_stats[label] = {
+            'label_number'          : label,
+            'mean_C1'               : mean_cluster_value[0], # R
+            'mean_C2'               : mean_cluster_value[1], # G
+            'mean_C3'               : mean_cluster_value[2], # B
+            'n_member_pixels'       : orig_vals.shape[0],
+            'percent_member_pixels' : orig_vals.shape[0] / n_unmasked,
+            'mean_colour'           : premeaned_val,
+        }
+    cluster_info['cluster_stats'] = cluster_stats
+    D = { 'H'                 : H,
+          'W'                 : W,
+          'total_pixels'      : H*W,
+          'n_masked_pixels'   : n_masked,
+          'n_unmasked_pixels' : n_unmasked,
+          'cluster_info'      : cluster_info,
+    }
+    if verbose: 
+        print('Gathered seg image info:')
+        _glob_form.print_dict(D)
+    return D
 
 def label(image, mask, method, args):
     """
@@ -329,7 +396,6 @@ def transition_matrix(L, normalize, print_M, args):
     allowed_labels = list(set(L.flatten().astype(int).tolist()))
     n_labels = len(allowed_labels)
     n_masked = (L == -1).sum()
-    #print('p',allowed_labels)
     # Shifted label images
     L_left  = np.c_[ L, -np.ones(H) ]
     L_right = np.c_[ -np.ones(H), L ]
