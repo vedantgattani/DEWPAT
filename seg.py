@@ -58,11 +58,23 @@ def main():
         help='Whether to display the resulting labelling')
     args = parser.parse_args()
 
-    ### Read in the image ###
-    #img, R, G, B, mask = utils.load_helper(args.input) 
+    ### Handle images ###
+    if os.path.isdir(args.input):
+        usables = [ '.jpg', '.png' ]
+        usables = list(set( usables + [ b.upper() for b in usables ] + 
+                                      [ b.lower() for b in usables ] ))
+        _checker = lambda k: any( k.endswith(yy) for yy in usables )
+        targets = [ os.path.join(args.input, f) 
+                    for f in os.listdir(args.input) if _checker(f) ]
+        for t in targets: main_helper(t, args)
+    elif os.path.isfile(args.input):
+        main_helper(args.input, args)
+    else:
+        raise ValueError('Non-existent target input ' + args.input)
     
-    img = skimage.io.imread(args.input)
-    if args.verbose: print('Loaded', args.input)
+def main_helper(img_path, args):
+    img = skimage.io.imread(img_path)
+    if args.verbose: print('Loaded', img_path)
     n_channels = img.shape[2]
 
     # Downscale image, if desired
