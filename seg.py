@@ -21,6 +21,11 @@ def main():
         help='Whether to print verbosely while running')
     parser.add_argument('--resize', type=float, default=0.5,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
+    parser.add_argument('--write_mean_segs', action='store_true', dest='write_mean_segs',
+                        help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
+    parser.add_argument('--mean_seg_output_dir', default=None,
+                        help='Specifies the folder to which saved mean segments must be written')
+    
     # Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
     #--
@@ -58,6 +63,9 @@ def main():
         help='Whether to display the resulting labelling')
     args = parser.parse_args()
 
+    if args.write_mean_segs:
+        assert not args.mean_seg_output_dir is None, "--write_mean_segs requires --mean_seg_output_dir"
+
     ### Handle images ###
     if os.path.isdir(args.input):
         usables = [ '.jpg', '.png' ]
@@ -73,6 +81,10 @@ def main():
         raise ValueError('Non-existent target input ' + args.input)
     
 def main_helper(img_path, args):
+    #img_filename_extless, img_file_extension = os.path.splitext(img_path)
+    img_file_basename = os.path.basename(img_path)
+    img_file_basename_extless = os.path.splitext(img_file_basename)[0]
+
     img = skimage.io.imread(img_path)
     if args.verbose: print('Loaded', img_path)
     n_channels = img.shape[2]
@@ -113,7 +125,19 @@ def main_helper(img_path, args):
 
     ### Label (cluster/segment) the image ###
     label_image = label(img, mask, args.labeller, args)
-    
+    # Write mean-cluster-valued image out if desired
+    if args.write_mean_segs:
+        int_mask = (mask*255).reshape(H,W,1)
+        mean_segs = color.label2rgb(label_image, image = img, bg_label = -1, 
+                                    bg_color = (0.0, 0.0, 0.0), kind = 'avg')
+        mean_segs = np.concatenate( (mean_segs, int_mask), axis = 2 )
+        if not os.path.isdir(args.mean_seg_output_dir):
+            os.makedirs(args.mean_seg_output_dir)
+        cfname = os.path.join(args.mean_seg_output_dir, 
+                              img_file_basename_extless + ".mean_seg.png")
+        if args.verbose: print('\tSaving mean seg image to', cfname)
+        skimage.io.imsave(fname = cfname, arr = mean_segs)
+
     ### Compute transition matrix ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
