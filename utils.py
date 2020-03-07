@@ -1,4 +1,4 @@
-import os, sys, numpy as np, skimage, argparse, warnings, matplotlib
+import os, sys, numpy as np, skimage, argparse, warnings, matplotlib, csv
 from skimage.util import view_as_windows
 import matplotlib.pyplot as plt
 from skimage import filters
@@ -508,6 +508,19 @@ def channelwise_extract_blocks(I, block_shape):
     Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape)
            for i in range(3) ]
     return np.stack(Cs, axis=-1) # NB_h x NB_w x HB x WB x C
+
+#
+
+def read_csv_full(path):
+    with open(path) as csvfile:
+        readCSV = csv.reader(csvfile, delimiter=',')
+        return [ row for row in readCSV ]
+
+def get_row_via(targ_list, search_term, index):
+    for j, targ in enumerate(targ_list):
+        if targ[index] == search_term:
+            return j
+    return None
 
 
 #

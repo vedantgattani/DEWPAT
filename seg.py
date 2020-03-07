@@ -1,5 +1,5 @@
 import os, sys, utils, argparse, sklearn, skimage, numpy as np, numpy.random as npr
-import warnings, matplotlib.pyplot as plt
+import warnings, matplotlib.pyplot as plt, csv
 from skimage import data, segmentation, color
 from skimage.future import graph
 from sklearn import cluster
@@ -25,7 +25,6 @@ def main():
                         help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
     parser.add_argument('--mean_seg_output_dir', default=None,
                         help='Specifies the folder to which saved mean segments must be written')
-    
     # Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
     #--
@@ -42,13 +41,15 @@ def main():
         help='Graph cuts Gaussian kernel width for superpixel initialization.')    
     #--
     group_g.add_argument('--kmeans_k', dest='kmeans_k', default=None,
-        help='Number of clusters for K-means. (Overrides settings for automatic parameter determination).')    
+        help='Specify number of clusters for K-means. Chosen automatically by default.')    
     group_g.add_argument('--kmeans_auto_bounds', dest='kmeans_auto_bounds', type=str, default="2,6",
         help='Upper and lower bounds on the number of clusters searched over for kmeans. (e.g., 2,6)')    
     group_g.add_argument('--kmeans_auto_crit', dest='kmeans_auto_crit', type=str, default='davies_bouldin',
         choices=['silhouette', 'davies_bouldin', 'calinski_harabasz'],
         help='Choice of criterion for choosing the best k-value (either mean silhouette coefficient,' 
               'Davies-Bouldin score, or Calinski-Harabasz index).')    
+    group_g.add_argument('--kmeans_k_file_list', default=None,
+        help='Specifies a path to a csv file that lists k values per image (e.g., "ty.png,5")')
     # Analysis
     group_a = parser.add_argument_group('Analysis parameters')
     group_a.add_argument('--normalize_matrix', action='store_true',
@@ -63,8 +64,22 @@ def main():
         help='Whether to display the resulting labelling')
     args = parser.parse_args()
 
+    ### Checks ###
+    # Ensure we have somewhere to write the mean segs, if needed
     if args.write_mean_segs:
         assert not args.mean_seg_output_dir is None, "--write_mean_segs requires --mean_seg_output_dir"
+    # Ensure clear choice for k in k means
+    _msg_1 = "Specify only one of kmeans_k, kmeans_k_file_list, kmeans_auto_crit"
+    if not (args.kmeans_k_file_list is None): assert args.kmeans_k is None, _msg_1 
+    if not (args.kmeans_k is None): assert args.kmeans_k_file_list is None, _msg_1 
+
+    # Read parameter specifications, if given
+    if not (args.kmeans_k_file_list is None):
+        assert os.path.isfile(args.kmeans_k_file_list), "K means specifier does not exist"
+        if args.verbose: print('Reading kmeans parameter specifier', args.kmeans_k_file_list)
+        args.kmeans_specifier = utils.read_csv_full(args.kmeans_k_file_list)
+    else:
+        args.kmeans_specifier = None
 
     ### Handle images ###
     if os.path.isdir(args.input):
@@ -83,10 +98,23 @@ def main():
 def main_helper(img_path, args):
     #img_filename_extless, img_file_extension = os.path.splitext(img_path)
     img_file_basename = os.path.basename(img_path)
-    img_file_basename_extless = os.path.splitext(img_file_basename)[0]
+    img_file_basename_extless, img_file_ext = os.path.splitext(img_file_basename)
+
+    kmeans_specifier = args.kmeans_specifier
+    if not (kmeans_specifier is None):
+        targ_row = utils.get_row_via(kmeans_specifier, img_file_basename, 0)
+        if targ_row is None:
+            print("Error: unable to find", img_file_basename, "in k-spec file! Skipping target.")
+            return
+        else:
+            found_k = int(kmeans_specifier[targ_row][1].strip())
+            if args.verbose: 
+                print('Found k-means spec target %s at row %d' % (img_file_basename, targ_row))
+                print('\tObtained k-value of', found_k)
+            args.kmeans_k = found_k
 
     img = skimage.io.imread(img_path)
-    if args.verbose: print('Loaded', img_path)
+    if args.verbose: print('Loaded image', img_path)
     n_channels = img.shape[2]
 
     # Downscale image, if desired
