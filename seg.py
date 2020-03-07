@@ -36,9 +36,14 @@ def main():
     group_g.add_argument('--gc_slic_sigma', dest='gc_slic_sigma', type=float, default=0.0,
         help='Graph cuts Gaussian kernel width for superpixel initialization.')    
     #--
-    group_g.add_argument('--kmeans_k', dest='kmeans_k', type=int, default=4,
-        help='Number of clusters for K-means.')    
-
+    group_g.add_argument('--kmeans_k', dest='kmeans_k', default=None,
+        help='Number of clusters for K-means. (Overrides settings for automatic parameter determination).')    
+    group_g.add_argument('--kmeans_auto_bounds', dest='kmeans_auto_bounds', type=str, default="2,6",
+        help='Upper and lower bounds on the number of clusters searched over for kmeans. (e.g., 2,6)')    
+    group_g.add_argument('--kmeans_auto_crit', dest='kmeans_auto_crit', type=str, default='davies_bouldin',
+        choices=['silhouette', 'davies_bouldin', 'calinski_harabasz'],
+        help='Choice of criterion for choosing the best k-value (either mean silhouette coefficient,' 
+              'Davies-Bouldin score, or Calinski-Harabasz index).')    
     # Analysis
     group_a = parser.add_argument_group('Analysis parameters')
     group_a.add_argument('--normalize_matrix', action='store_true',
@@ -133,7 +138,40 @@ def cluster_vecs(X, method, args):
                                    max_eps = np.inf,
                                    xi = 0.05)
     elif method == 'kmeans':
-        clusterer = cluster.MiniBatchKMeans(n_clusters = args.kmeans_k, batch_size=100)
+        kmeans_B = 100
+        specified_k = args.kmeans_k
+        if not (specified_k is None):
+            if args.verbose: print("\tPreparing k-means clusterer with fixed k =", specified_k)
+            clusterer = cluster.MiniBatchKMeans(n_clusters = int(args.kmeans_k), batch_size = kmeans_B)
+        else:
+            _min_k, _max_k = list(map(int, args.kmeans_auto_bounds.strip().split(","))) # min,max
+            verb_str_a = "\tAttempting to automatically determine k. Searching over k ="
+            if args.verbose: print(verb_str_a, _min_k, "to", _max_k)
+            def run_clustering(nc_k):
+                if args.verbose: print("\tOn k =", nc_k)
+                return cluster.MiniBatchKMeans(n_clusters = nc_k, batch_size = kmeans_B)
+            clusterers = [ (i, run_clustering(i)) 
+                            for i in range(_min_k, _max_k+1) ]
+            clustering_labels = [ (c[0], c[1].fit_predict(X)) for c in clusterers ]
+            if args.kmeans_auto_crit == 'silhouette': 
+                scorer_function = sklearn.metrics.silhouette_score
+                _coef = 1.0
+            elif args.kmeans_auto_crit == 'davies_bouldin': 
+                scorer_function = sklearn.metrics.davies_bouldin_score
+                _coef = -1.0 # Since lower is better
+            elif args.kmeans_auto_crit == 'calinski_harabasz':
+                scorer_function = sklearn.metrics.calinski_harabasz_score
+                _coef = 1.0
+            else:
+                raise ValueError('Unknown scorer ' + args.kmeans_auto_crit)
+            crit_scores = [ (i, scorer_function(X, labels)) for (i, labels) in clustering_labels ]
+            best_ind = np.argmax([ _coef * a[1] for a in crit_scores ])
+            if args.verbose:
+                print("\tObtained the following scores with criterion %s:" % args.kmeans_auto_crit)
+                for i, s in crit_scores:
+                    print("\t\tk = %d -> %.3f" % (i,s))
+                print('\tBest k:', crit_scores[best_ind][0])
+            return clustering_labels[best_ind][1]
     else:
         raise ValueError('Unknown method' + method)
     if args.verbose: print("\tRunning clustering via", method)
@@ -154,7 +192,9 @@ def cluster_based_img_seg(image, mask, method, args):
     # Use the image positions to reform the image
     # Background pixels are labeled -1
     label_image = reform_label_image(vec_labels, mask) 
-    if args.verbose: print("\tFinished reforming label image")
+    if args.verbose: 
+        print("\tFinished reforming label image")
+        #labelset = set()
     return label_image
 
 def extract_vecs(image, mask): return image[ mask > 0 ]
@@ -239,8 +279,12 @@ def transition_matrix(L, normalize, print_M, args):
     if not args.keep_bg:
         if -1 in allowed_labels: allowed_labels.remove(-1) # 
         n_labels = len(allowed_labels)
+        _ATN = len(all_tuples)
         all_tuples = [ elem for elem in all_tuples if not (-1 in elem) ]
-        if args.verbose: print("\t\tPost-bg removal:", len(all_tuples), "remaining")
+        if args.verbose: 
+            print("\t\tPost-bg removal:", len(all_tuples), "remaining (%d removed)" % 
+                    (_ATN - len(all_tuples)))
+            print("\t\tExpected", 2*(H+W), 'missing values due to appended boundaries')
     # Stringify the tuples
     all_tuples = map(lambda s: ",".join(map(str, s)), all_tuples)
     transition_counters = Counter(all_tuples)
