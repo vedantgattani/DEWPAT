@@ -25,11 +25,13 @@ def main():
     parser.add_argument('--resize', type=float, default=0.5,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
     parser.add_argument('--write_mean_segs', action='store_true', dest='write_mean_segs',
-                        help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
+        help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
     parser.add_argument('--mean_seg_output_dir', default=None,
-                        help='Specifies the folder to which saved mean segment images must be written')
+        help='Specifies the folder to which saved mean segment images must be written')
     parser.add_argument('--seg_stats_output_file', default=None,
-                        help='Specifies output file to which segment statistics should be written')
+        help='Specifies output file to which segment statistics should be written')
+    parser.add_argument('--cluster_number_file', default=None,
+        help='Specifies output file to which the number of estimated clusters per image should be written')
     # Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
     #--
@@ -115,13 +117,24 @@ def main():
                 clines = []
                 for cluster_label in Ds.keys(): # For each cluster
                     D = Ds[cluster_label]
-                    #line = ",".join( map(str, 
                     clines.append( [ key, D['label_number'], D['mean_C1'], D['mean_C2'],
                                D['mean_C3'], D['n_member_pixels'], 
                                D['percent_member_pixels'] ] ) # ) )
                 clines.sort(key = lambda a: a[6], reverse = True)
                 clines = [ ",".join( map(str, a) ) for a in clines ]
                 for line in clines: _fh.write(line + '\n')
+    # Write csv with number of clusters per image
+    # The background label is NOT counted
+    if not (args.cluster_number_file is None):
+        if args.verbose: print('Writing cluster number file to', args.cluster_number_file)
+        with open(args.cluster_number_file, 'w') as fh:
+            fh.write("image,number_of_clusters\n")
+            for key in file_outputs.keys():
+                tmat, D_img = file_outputs[key]
+                allowed_labels = D_img['cluster_info']['allowed_labels']
+                num_labels = len(allowed_labels)
+                if -1 in allowed_labels: num_labels -= 1
+                fh.write( "%s,%d\n" % (key,num_labels) )
     
 def main_helper(img_path, args):
     #img_filename_extless, img_file_extension = os.path.splitext(img_path)
