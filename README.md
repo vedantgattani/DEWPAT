@@ -222,9 +222,9 @@ I also recommend running with `--verbose` so you know it is acting as intended.
 
   `python seg.py <target> --display --verbose`
   
-- Run the clustering in CIE-LAB space and write out the number of clusters per image:
+- Run the clustering in CIE-LAB space, merge small clusters with their closest counterparts in colour space (in a k-dependent fashion), and write out the number of clusters per image:
 
-  `python seg.py <target_directory> --display --verbose --clustering_colour_space lab --cluster_number_file cn.csv`
+  `python seg.py <target_directory> --display --verbose --clustering_colour_space lab --cluster_number_file cn.csv --merge_small_clusters_method k_dependent`
 
 - Segments the image (after resizing and blurring) via graph cuts with a specified compactness and superpixel initialization parameters:  
   
