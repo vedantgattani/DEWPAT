@@ -14,7 +14,9 @@ _glob_form = Formatter()
 
 def main():
     ### >> Argument parsing << ###
-    parser = argparse.ArgumentParser(description='Image clustering/segmentation analysis.')
+    parser = argparse.ArgumentParser(
+                description='Image clustering/segmentation analysis.',
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter )
     parser.add_argument('input', type=str, help='Input: either a folder or an image')
     parser.add_argument('--labeller', dest='labeller', type=str, default='kmeans',
         choices=['affinity_prop', 'dbscan', 'optics', 'graph_cuts', 'kmeans'],
@@ -139,7 +141,7 @@ def main():
                                D['mean_C1_hsv'], D['mean_C2_hsv'], D['mean_C3_hsv'], 
                                D['n_member_pixels'], 
                                D['percent_member_pixels'] ] ) # ) )
-                clines.sort(key = lambda a: a[6], reverse = True)
+                clines.sort(key = lambda a: a[-1], reverse = True)
                 clines = [ ",".join( map(str, a) ) for a in clines ]
                 for line in clines: _fh.write(line + '\n')
     # Write csv with number of clusters per image
