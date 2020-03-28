@@ -13,44 +13,57 @@ _glob_form = Formatter()
 # TODO save json of counters and matrices for folders
 
 def main():
-    ### Argument parsing ###
+    ### >> Argument parsing << ###
     parser = argparse.ArgumentParser(description='Image clustering/segmentation analysis.')
     parser.add_argument('input', type=str, help='Input: either a folder or an image')
     parser.add_argument('--labeller', dest='labeller', type=str, default='kmeans',
         choices=['affinity_prop', 'dbscan', 'optics', 'graph_cuts', 'kmeans'],
         help='Labelling (segmentation and/or clustering) algorithm.')
-    parser.add_argument('--blur', type=float, default=1.0,
-        help='Specify Gaussian blur standard deviation applied to the image (default: 1)')
     parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
+    ### Image preprocessing
     parser.add_argument('--resize', type=float, default=0.5,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
-    parser.add_argument('--write_mean_segs', action='store_true', dest='write_mean_segs',
-        help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
-    parser.add_argument('--mean_seg_output_dir', default=None,
-        help='Specifies the folder to which saved mean segment images must be written')
+    parser.add_argument('--blur', type=float, default=1.0,
+        help='Specify Gaussian blur standard deviation applied to the image (default: 1)')
+    parser.add_argument('--clustering_colour_space', default='rgb',
+        choices=['rgb', 'hsv', 'cie', 'lab'],
+        help='Specify the colour space in which to perform the clustering')
+    ### Post-processing options
+    parser.add_argument('--merge_small_clusters_method', default='none',
+        choices = ['none', 'k_dependent', 'fixed'],
+        help='Specify how or whether to merge small clusters')
+    parser.add_argument('--fixed_cluster_size_merging_threshold', default=0.05, type=float,
+        help='Fixed threshold percentage for cluster merging (only used when merging method is fixed)')
+    parser.add_argument('--small_cluster_merging_kdep_param', default=0.05, type=float,
+        help='Parameter for k_dependent annealed thresholding (initial thresh for k=2)')
+    parser.add_argument('--small_cluster_merging_dynamic_k', action='store_true',
+        help='If using k_dependent merging threshold, specify to recompute the threshold after every merge')
+    ### Output statistics files
     parser.add_argument('--seg_stats_output_file', default=None,
         help='Specifies output file to which segment statistics should be written')
     parser.add_argument('--cluster_number_file', default=None,
         help='Specifies output file to which the number of estimated clusters per image should be written')
-    parser.add_argument('--clustering_colour_space', default='rgb',
-        choices=['rgb', 'hsv', 'cie', 'lab'],
-        help='Specify the colour space in which to perform the clustering')
-    # Labeller params
+    ### Output image files
+    parser.add_argument('--write_mean_segs', action='store_true', dest='write_mean_segs',
+        help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
+    parser.add_argument('--mean_seg_output_dir', default=None,
+        help='Specifies the folder to which saved mean segment images must be written')
+    ### Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
-    #--
+    #-- DBSCAN options
     group_g.add_argument('--dbscan_eps', dest='dbscan_eps', type=float, default=1.0,
         help='Epsilon neighbourhood used in DBSCAN.')
     group_g.add_argument('--dbscan_min_neb_size', dest='dbscan_min_neb_size', type=int, default=20,
         help='Min samples needed for core point designation in a neighbourhood. Used in DBSCAN.')
-    #--
+    #-- Graph cuts segmentation options
     group_g.add_argument('--gc_compactness', dest='gc_compactness', type=float, default=10.0,
         help='Graph cuts superpixel compactness.')
     group_g.add_argument('--gc_n_segments', dest='gc_n_segments', type=int, default=300,
         help='Graph cuts n_segments used in initialization.')
     group_g.add_argument('--gc_slic_sigma', dest='gc_slic_sigma', type=float, default=0.0,
         help='Graph cuts Gaussian kernel width for superpixel initialization.')    
-    #--
+    #-- Kmeans options
     group_g.add_argument('--kmeans_k', dest='kmeans_k', default=None,
         help='Specify number of clusters for K-means. Chosen automatically by default.')    
     group_g.add_argument('--kmeans_auto_bounds', dest='kmeans_auto_bounds', type=str, default="2,6",
@@ -61,7 +74,7 @@ def main():
               'Davies-Bouldin score, or Calinski-Harabasz index).')    
     group_g.add_argument('--kmeans_k_file_list', default=None,
         help='Specifies a path to a csv file that lists k values per image (e.g., "ty.png,5")')
-    # Analysis
+    ### Analysis
     group_a = parser.add_argument_group('Analysis parameters')
     group_a.add_argument('--normalize_matrix', action='store_true',
         help='Whether to normalize the transition matrix')
@@ -69,7 +82,7 @@ def main():
         help='Pass flag to prevent printing the transition matrix')
     group_a.add_argument('--keep_bg', action='store_true',
         help='Keeps the background label when computing the transition matrix')
-    # Visualization
+    ### Visualization
     # TODO heatmap with labels on scale (colorbar), superpixels
     parser.add_argument('--display', dest='display', action='store_true',
         help='Whether to display the resulting labelling')
@@ -212,7 +225,90 @@ def main_helper(img_path, args):
             curr_new_label += 1
         if args.verbose: print('\tNew Counter:', Counter(LI_new.flatten().astype(int).tolist()))
         return LI_new
-    label_image = reorder_label_img( label(img, mask, args.labeller, args) )
+    def k_dependent_smaller_clusters_merging_threshold(k):
+        # Start at some value for k=2, and anneal down as k increases
+        if k <= 1: return 0.0 # No merging if k == 1
+        T0 = args.small_cluster_merging_kdep_param
+        T  = T0 / (k - 1)
+        return T
+    def merge_smaller_clusters(LI):
+        LI = np.rint(LI).astype(int)
+        labels_list = LI.flatten().tolist()
+        c = Counter(labels_list)
+        labels_initial = list(c.keys())
+        if args.verbose: print('Calling cluster merging:', args.merge_small_clusters_method)
+        if args.merge_small_clusters_method == 'none': return LI
+        elif args.merge_small_clusters_method == 'k_dependent':
+            k_initial = len(labels_initial)
+            if -1 in labels_initial: k_initial -= 1
+            thresh = k_dependent_smaller_clusters_merging_threshold(k_initial)
+        elif args.merge_small_clusters_method == 'fixed':
+            thresh = args.fixed_cluster_size_merging_threshold
+        else: raise ValueError('Unknown merging method ' + str(args.merge_small_clusters_method))
+        assert thresh >= 0.0 and thresh <= 1.0, "Untenable threshold value " + str(thresh)
+        if args.verbose: print('Attempting merge. Chose merging threshold', thresh)
+        # Now have the threshold, need to merge the smaller clusters below that threshold
+        def attempt_merge(currLI):
+            """ Runs a single merge iteration. Returns None if nothing was merged. """
+            print('\tEntering single merge attempt')
+            D = label_img_to_stats(img, mask, currLI)
+            cluster_stats = D['cluster_info']['cluster_stats']
+            current_labels = D['cluster_info']['allowed_labels']
+            found_failure = False
+            percents = [ (cluster_stats[clabel]['percent_member_pixels'], clabel)
+                         for clabel in current_labels if not clabel == -1 ]
+            _current_k = len(percents)
+            sorted_percents = sorted(percents, key=lambda x: x[0]) # min percent at front
+            if args.verbose: print('\t\tObtained percents', sorted_percents)
+            curr_percent, label = sorted_percents[0] # We always merge the smallest one
+            # If specified, we should recompute the threshold
+            nonlocal thresh
+            if args.small_cluster_merging_dynamic_k and args.merge_small_clusters_method == 'k_dependent':
+                thresh = k_dependent_smaller_clusters_merging_threshold(_current_k)
+                if args.verbose: print('\tRecomputed k-dep threshold:', thresh)
+            if curr_percent < thresh:
+                if args.verbose: print('\t\tDetected cluster size violation. Merging.')
+                found_failure = True
+                # Target colour (to destroy)
+                targeted_mean_colour = cluster_stats[label]['mean_colour']
+                # Distances in colour space to target
+                dists = [ (( (  targeted_mean_colour 
+                                - cluster_stats[olabel]['mean_colour']
+                             )**2 ).sum(), olabel)
+                          for olabel in current_labels 
+                          if not (olabel in [-1, label]) ]
+                sorted_oths = sorted(dists, key=lambda x: x[0], reverse=False) # min dist at front
+                # Colour cluster label to replace the target with
+                merge_into_target = sorted_oths[0][1] # <- cluster label
+                if args.verbose:
+                    mean_oth = cluster_stats[merge_into_target]['mean_colour']
+                    oth_percent = cluster_stats[merge_into_target]['percent_member_pixels']
+                    print('\t\tMerging cluster %d (%s,%.3f) into %d (%s,%.3f)' %
+                           (  label, str(targeted_mean_colour), curr_percent,
+                              merge_into_target, str(mean_oth), oth_percent   ) )
+                # We've found the closest cluster. Now to perform the merging.
+                LI_copy = np.copy(currLI)
+                LI_copy[ currLI == label ] = merge_into_target
+            if found_failure: return LI_copy
+            else: return None # Finished all merges
+            #</ End of iterated merging routine />#
+        # Iteratively attempt merging the smallest cluster until it no longer occurs 
+        all_clear = False
+        currLI = LI
+        while not all_clear:
+            merged_output = attempt_merge(currLI)
+            if merged_output is None: # we are done
+                all_clear = True
+            else: # Try again since a merging occurred
+                currLI = merged_output
+        if args.verbose: print('\tFinished merging attempts')
+        return currLI
+    # Compute labelling -> merge clusters -> reorder labels
+    label_image = reorder_label_img( 
+                        merge_smaller_clusters( 
+                            label(img, mask, args.labeller, args) 
+                        ) 
+                  )
     mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
     # Write mean-cluster-valued image out if desired
@@ -238,11 +334,14 @@ def main_helper(img_path, args):
     if args.verbose: print('Finished processing', img_path)
     return M, img_stats
 
-def label_img_to_stats(img, mask, label_img, mean_seg_img, verbose):
+def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
     """
     Returns a dictionary of label img and initial image stats
     This includes a subdictionary of information per label set (cluster)
     """
+    if mean_seg_img is None:
+        mean_seg_img = color.label2rgb(label_img, image = img, bg_label = -1, 
+                                       bg_color = (0.0, 0.0, 0.0), kind = 'avg')
     # 
     H, W, C = img.shape
     allowed_labels = list(set(label_img.flatten().astype(int).tolist()))
@@ -381,9 +480,7 @@ def cluster_based_img_seg(image, mask, method, args):
     # Use the image positions to reform the image
     # Background pixels are labeled -1
     label_image = reform_label_image(vec_labels, mask) 
-    if args.verbose: 
-        print("\tFinished reforming label image")
-        #labelset = set()
+    if args.verbose: print("\tFinished reforming label image")
     return label_image
 
 def extract_vecs(image, mask): return image[ mask > 0 ]
@@ -431,17 +528,14 @@ def vis_label_img(image, labels_img, args):
                                 bg_color=(0,0,0), image_alpha=1, 
                                 kind='avg')
     # Show image triplet
-    #fig = plt.figure(figsize=(15, 5))
     fig, ax = plt.subplots(nrows=2, ncols=2) #, sharex=True, sharey=True) #, figsize=(25, 8))
     _q = [(0,0), (0,1), (1,0), (1,1)]
     _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg']
     for i, I in enumerate([image, pure_segs, over_segs, mean_segs]):
-        #fig.add_subplot(1, i+1, i+1)
         j, k = _q[i]
         ax[j, k].imshow(I)
         ax[j, k].axis('off')
         ax[j, k].set_title(_t[i])
-    # for a in ax: a.axis('off')
     plt.tight_layout()
 
 def transition_matrix(L, normalize, print_M, args):
@@ -459,7 +553,6 @@ def transition_matrix(L, normalize, print_M, args):
     L_right = np.c_[ -np.ones(H), L ]
     L_up    = np.r_[ [-np.ones(W)], L ]
     L_down  = np.r_[ L, [-np.ones(W)] ]
-    #print(H,W,L_up.shape,L_down.shape, L_left.shape, L_right.shape)
     horz_shift = np.stack( (L_left, L_right), axis=-1 ).reshape(H*Wpp, 2)
     vert_shift = np.stack( (L_up, L_down),    axis=-1 ).reshape(Hpp*W, 2)
     all_tuples = np.concatenate( (horz_shift, vert_shift), axis = 0 ).astype(int).tolist()
@@ -520,7 +613,6 @@ def gauss_filter(img, blur_sigma):
     return img
 
 def send_mask_to_minus_one(image, mask):
-    #print(mask[0:100,0:100], image[0:100,0:100])
     image[ mask <= 0 ] = -1 
     return image
 
