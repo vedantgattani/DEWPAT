@@ -220,21 +220,35 @@ I also recommend running with `--verbose` so you know it is acting as intended.
 ### Examples
 - Run the clustering under default settings, printing verbosely, and display the resulting segmented image at the end:
 
-  `python seg.py <target> --display --verbose`
-  
-- Run the clustering in CIE-LAB space, merge small clusters with their closest counterparts in colour space (with a fixed threshold of 0.05), and write out the number of clusters per image:
+```bash
+python seg.py <target> --display --verbose
+```
+
+- Run the clustering in CIE-LAB colour space, merge small clusters with their closest counterparts in colour space (with a fixed threshold of 0.05), and write out the number of clusters per image:
 
 ```bash
-python seg.py <target_directory> --display --verbose --clustering_colour_space lab --cluster_number_file cn.csv --merge_small_clusters_method fixed --fixed_cluster_size_merging_threshold 0.05
+python seg.py <target_directory> --display --verbose \
+              --clustering_colour_space lab \
+              --cluster_number_file cn.csv \
+              --merge_small_clusters_method fixed \
+              --fixed_cluster_size_merging_threshold 0.05
 ```
 
 - Segments the image (after resizing and blurring) via graph cuts with a specified compactness and superpixel initialization parameters:  
   
-  `python seg.py <target> --display --labeller graph_cuts --gc_compactness 20 --resize 1.0 --blur 0.25 --gc_n_segments 500 --verbose`
+```bash
+python seg.py <target> --display --verbose \
+              --labeller graph_cuts --gc_compactness 20 \
+              --resize 1.0 --blur 0.25 --gc_n_segments 500
+```
 
 - Segments the image with k-means using `k` values from `k.csv`, writes the mean segmented images to `segs_dir`, and writes a csv of cluster data to `cluster_data.csv`:
 
-  `python seg.py <target> --kmeans_k_file_list k.csv --verbose --write_mean_segs --mean_seg_output_dir segs_dir --seg_stats_output_file cluster_data.csv`
+```bash
+python seg.py <target> --kmeans_k_file_list k.csv --verbose \
+              --write_mean_segs --mean_seg_output_dir segs_dir \
+              --seg_stats_output_file cluster_data.csv
+```
 
 ## TODO
 
