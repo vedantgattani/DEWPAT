@@ -176,11 +176,24 @@ def main_helper(img_path, args):
         print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,C), 
               img.min(0).min(0), img.max(0).max(0))
         print('\tNum masked values:', H*W - (mask > 0).sum(), "/", H*W)
-    # Move from byte to float
-    #img = skimage.img_as_float(img) # 255.0
 
     ### Label (cluster/segment) the image ###
-    label_image = label(img, mask, args.labeller, args)
+    def reorder_label_img(LI):
+        if args.verbose: print('\tReordering label image')
+        LI = np.rint(LI).astype(int)
+        labels_list = LI.flatten().astype(int).tolist()
+        c = Counter(labels_list)
+        if args.verbose: print('\tOrig Counter:', c)
+        ordered_targets = c.most_common() # [(int_key, count),...]
+        curr_new_label = 1
+        LI_new = np.copy(LI)
+        for j, (int_key, count) in enumerate(ordered_targets):
+            if int_key == -1: continue # Leave the background alone
+            LI_new[ LI == int_key ] = curr_new_label
+            curr_new_label += 1
+        if args.verbose: print('\tNew Counter:', Counter(LI_new.flatten().astype(int).tolist()))
+        return LI_new
+    label_image = reorder_label_img( label(img, mask, args.labeller, args) )
     mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
     # Write mean-cluster-valued image out if desired
@@ -262,7 +275,6 @@ def cluster_vecs(X, method, args):
     Output: cluster labels vector (S, integer)
     """
     X = X.astype(float)
-    #print(X, type(X))
     if   method == 'affinity_prop': 
         clusterer = cluster.AffinityPropagation(affinity = 'euclidean',
                                                 damping = 0.5) 
