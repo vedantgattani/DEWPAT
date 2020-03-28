@@ -222,6 +222,10 @@ I also recommend running with `--verbose` so you know it is acting as intended.
 
   `python seg.py <target> --display --verbose`
   
+- Run the clustering in CIE-LAB space and write out the number of clusters per image:
+
+  `python seg.py <target_directory> --display --verbose --clustering_colour_space lab --cluster_number_file cn.csv`
+
 - Segments the image (after resizing and blurring) via graph cuts with a specified compactness and superpixel initialization parameters:  
   
   `python seg.py <target> --display --labeller graph_cuts --gc_compactness 20 --resize 1.0 --blur 0.25 --gc_n_segments 500 --verbose`
