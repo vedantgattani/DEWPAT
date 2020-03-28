@@ -1,6 +1,7 @@
 import os, sys, utils, argparse, sklearn, skimage, numpy as np, numpy.random as npr
 import warnings, matplotlib.pyplot as plt, csv
 from skimage import data, segmentation, color
+from skimage.color import rgb2hsv
 from skimage.future import graph
 from sklearn import cluster
 from scipy import interpolate
@@ -32,6 +33,9 @@ def main():
         help='Specifies output file to which segment statistics should be written')
     parser.add_argument('--cluster_number_file', default=None,
         help='Specifies output file to which the number of estimated clusters per image should be written')
+    parser.add_argument('--clustering_colour_space', default='rgb',
+        choices=['rgb', 'hsv', 'cie', 'lab'],
+        help='Specify the colour space in which to perform the clustering')
     # Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
     #--
@@ -110,15 +114,17 @@ def main():
         if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
         with open(args.seg_stats_output_file, "w") as _fh:
             #_fh.write("file,cluster_ind,mu_C_1,mu_C_2,mu_C_3,n_member_pixels,percent_member_pixels\n")
-            _fh.write("image,cluster,R,G,B,frequency,percent\n")
+            _fh.write("image,cluster,R,G,B,H,S,V,frequency,percent\n")
             for key in file_outputs.keys(): # For each file
                 tmat, D_img = file_outputs[key]
                 Ds = D_img['cluster_info']['cluster_stats']
                 clines = []
                 for cluster_label in Ds.keys(): # For each cluster
                     D = Ds[cluster_label]
-                    clines.append( [ key, D['label_number'], D['mean_C1'], D['mean_C2'],
-                               D['mean_C3'], D['n_member_pixels'], 
+                    clines.append( [ key, D['label_number'], 
+                               D['mean_C1'], D['mean_C2'], D['mean_C3'], 
+                               D['mean_C1_hsv'], D['mean_C2_hsv'], D['mean_C3_hsv'], 
+                               D['n_member_pixels'], 
                                D['percent_member_pixels'] ] ) # ) )
                 clines.sort(key = lambda a: a[6], reverse = True)
                 clines = [ ",".join( map(str, a) ) for a in clines ]
@@ -252,14 +258,18 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img, verbose):
         mean_vals = mean_seg_img[bool_indexer]
         mean_cluster_value = orig_vals.mean(0)
         premeaned_val = mean_vals.mean(0)
+        premeaned_val_hsv = rgb2hsv(premeaned_val.reshape(1,1,3))[0,0,:]
         cluster_stats[label] = {
             'label_number'          : label,
-            'mean_C1'               : mean_cluster_value[0], # R
+            'mean_C1'               : mean_cluster_value[0], # R (floats)
             'mean_C2'               : mean_cluster_value[1], # G
             'mean_C3'               : mean_cluster_value[2], # B
+            'mean_C1_hsv'           : premeaned_val_hsv[0],  # H in [0,1], multiply by 360 to get degrees
+            'mean_C2_hsv'           : premeaned_val_hsv[1],  # S
+            'mean_C3_hsv'           : premeaned_val_hsv[2],  # V
             'n_member_pixels'       : orig_vals.shape[0],
             'percent_member_pixels' : orig_vals.shape[0] / n_unmasked,
-            'mean_colour'           : premeaned_val,
+            'mean_colour'           : premeaned_val, # Integer array
         }
     cluster_info['cluster_stats'] = cluster_stats
     D = { 'H'                 : H,
@@ -279,6 +289,23 @@ def label(image, mask, method, args):
     Input: I (M x N x C)
     Output: Pixelwise labels (M x N), integer
     """
+    # Convert to desired colour space
+    if not args.clustering_colour_space == 'rgb':
+        if args.verbose: 
+            _K = args.clustering_colour_space 
+            _app = { 'cie' : '(CIE-1931-RGB)', 'lab' : '(CIE-LAB)', 'hsv' : '' }
+            print('Converting to colour space', _K, _app[_K]) 
+        if args.clustering_colour_space == 'hsv':
+            image = np.rint( rgb2hsv(image/255.0) * 255.0 ).astype(int) 
+        if args.clustering_colour_space == 'cie': # CIE1931
+            from skimage.color import rgb2rgbcie
+            image = np.rint( rgb2rgbcie(image/255.0) * 255.0 ).astype(int)
+        if args.clustering_colour_space == 'lab': # CIE-LAB / CIE L*a*b*
+            # LAB may be the most perceptually principled choice since (in humans)
+            # it can be used to compute more perceptual colour differences.
+            from skimage.color import rgb2lab # Bounds: [0,100], [-128,128], [-128,128]
+            image = np.rint( rgb2lab(image/255.0) ).astype(int) 
+    # Perform clustering
     if method == 'graph_cuts': return segment(image, method, mask, args)
     else:                      return cluster_based_img_seg(image, mask, method, args)
 
