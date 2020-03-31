@@ -359,7 +359,7 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
         mean_vals = mean_seg_img[bool_indexer]
         mean_cluster_value = orig_vals.mean(0)
         premeaned_val = mean_vals.mean(0)
-        premeaned_val_hsv = rgb2hsv(premeaned_val.reshape(1,1,3))[0,0,:]
+        premeaned_val_hsv = rgb2hsv(premeaned_val.reshape(1,1,3) / 255.0)[0,0,:]
         cluster_stats[label] = {
             'label_number'          : label,
             'mean_C1'               : mean_cluster_value[0], # R (floats)
