@@ -16,7 +16,8 @@ Note: operates in RGB color space.
 '''
 
 overall_desc = 'Computes some simple measures of image complexity.'
-parser = argparse.ArgumentParser(description=overall_desc)
+parser = argparse.ArgumentParser(description=overall_desc,
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 # Input image
 parser.add_argument('input', type=str, help='Input: either a folder or an image')
 # Meta-arguments
@@ -28,11 +29,11 @@ parser.add_argument('--timing', dest='timing', action='store_true',
         help='Whether to measure and print timing on each function')
 # Preprocessing (resize, blur, greyscale, etc...)
 parser.add_argument('--blur', type=float, default=0.0,
-    help='Specify Gaussian blur standard deviation applied to the image (default: none)')
+    help='Specify Gaussian blur standard deviation applied to the image')
 parser.add_argument('--greyscale', type=str, default="none",
-    help='Specify greyscale conversion: one of "human", "avg", or "none". (default: none)')
+    help='Specify greyscale conversion: one of "human", "avg", or "none".')
 parser.add_argument('--resize', type=float, default=1.0,
-    help='Specify scalar resizing value. E.g., 0.5 halves the image size; 2 doubles it. (default: 1)')
+    help='Specify scalar resizing value. E.g., 0.5 halves the image size; 2 doubles it.')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
         description=('Controls which complexity measures to utilize. ' + 
@@ -89,6 +90,10 @@ group_c.add_argument('--wavelet_details',
 # Algorithm parameters
 group_p = parser.add_argument_group('Algorithmic parameters',
             description='Options controlling parameters of complexity estimation algorithms')
+group_p.add_argument('--local_cov_patch_size', type=int, default=20,
+    help='Patch size for local covariance calculations')
+group_p.add_argument('--local_covar_wstep', type=int, default=5,
+    help='The step-size (stride) for the local covariance calculation')
 group_p.add_argument('--sinkhorn_emd', action='store_true', 
     help='Specify to compute the entropy-regularized Sinkhorn approximation, rather than the exact EMD via linear programming')
 group_p.add_argument('--emd_ignore_coords', action='store_true',
@@ -96,11 +101,11 @@ group_p.add_argument('--emd_ignore_coords', action='store_true',
 group_p.add_argument('--squared_euc_metric', action='store_true',
     help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
 group_p.add_argument('--emd_downscaling', type=float, default=0.2,
-    help='Specify image downscaling factor for EMD calculations (default: 0.2)')
+    help='Specify image downscaling factor for EMD calculations')
 group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
-    help='Specify Sinkhorn entropy regularization weight coefficient (default: 0.25)')
+    help='Specify Sinkhorn entropy regularization weight coefficient')
 group_p.add_argument('--emd_coord_scaling', type=float, default=0.2,
-    help='Specify spatial coordinate scaling for EMD calculations, which controls the relative balance between pixel vs image space distance (default: 0.2)')
+    help='Specify spatial coordinate scaling for EMD calculations, which controls the relative balance between pixel vs image space distance')
 group_p.add_argument('--wt_threshold_percentile', type=float, default=99,
     help='Controls the threshold percentile for the wavelet transform-based method')
 group_p.add_argument('--wt_n_levels', type=int, default=4,
@@ -189,8 +194,8 @@ def compute_complexities(impath,    # Path to input image file
         # Local entropy options
         local_entropy_disk_size=24, # Patch size for local entropy calculations
         # Local covariance options
-        local_patch_size=20,        # Patch size for local covariance calculations
-        local_covar_wstep=5,        # The step-size (stride) for the local covariance calculation
+        #local_patch_size=20,        # Patch size for local covariance calculations
+        #local_covar_wstep=5,        # The step-size (stride) for the local covariance calculation
         # Shared Patch and pixelwise differential entropy options
         transform_diff_ent=False,   # Whether to affinely transform the differential entropy
         affine_param=150,           # Parameter used in affine transform for differential entropy
@@ -276,6 +281,9 @@ def compute_complexities(impath,    # Path to input image file
         if False: # Display mask
             imdisplay(alpha_mask, 'alpha_mask', colorbar=True, cmap='plasma')
             plt.show()
+    else:
+        alpha_mask = None
+
     if args.ignore_alpha:
         using_alpha_mask = False
         alpha_mask, alpha_channel = None, None
@@ -364,7 +372,8 @@ def compute_complexities(impath,    # Path to input image file
                                                                  disk(local_entropy_disk_size),
                                                                  mask=current_mask_local_ent)
                             for i in range(3) ]).mean(axis=0)
-            if show_locent_image: imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=alpha_mask)
+            if show_locent_image: 
+                imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=alpha_mask)
             return np.mean(le_img)
         add_new(channelwise_local_entropies(img), 1)
 
@@ -408,6 +417,8 @@ def compute_complexities(impath,    # Path to input image file
     # Closely related to the distribution of L_2 distance between patches
     # Note: vectorize over the patches? use slogdet
     if 3 in complexities_to_use:
+        local_patch_size = args.local_cov_patch_size
+        local_covar_wstep = args.local_covar_wstep
         @timing_decorator(args.timing)
         def local_patch_covariance(img):
             if verbose: print('Computing local patch covariances')
@@ -424,7 +435,9 @@ def compute_complexities(impath,    # Path to input image file
                     if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
                     unfolded_patch = patches[:,i,j,:,:].reshape(3, wt)
                     return scalarize(np.cov( unfolded_patch ))
-                if verbose: print('\tPatches Size: %s (Mask Size: %s)' % (str(patches.shape),str(alpha_over_patches.shape)) )
+                if verbose: 
+                    print('\tPatches Size: %s (Mask Size: %s)' % 
+                            (str(patches.shape),str(alpha_over_patches.shape)) )
                 covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
             else:
                 if verbose: print('\tPatches Size:', patches.shape)
@@ -436,8 +449,11 @@ def compute_complexities(impath,    # Path to input image file
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
-            if show_loccov_image: imdisplay(local_covar_img, 'Local Covariances', cmap = 'viridis', 
-                                            colorbar = True, mask = alpha_mask)
+            if show_loccov_image:
+                h, w, c = img.shape
+                resized_local_covar_img = skimage.transform.resize(local_covar_img, output_shape=(h,w), order=3)
+                imdisplay(resized_local_covar_img, 'Local Covariances', cmap = 'viridis', 
+                          colorbar = True, mask = alpha_mask) 
             return np.mean(local_covar_img)
         add_new(local_patch_covariance(img), 3)
 
