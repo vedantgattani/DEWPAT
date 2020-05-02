@@ -337,7 +337,7 @@ def compute_complexities(impath,    # Path to input image file
     assert blur_sigma >= 0.0, "Untenable blur kernel width"
     if blur_sigma > 1e-5:
         if verbose: print("\tBlurring with sigma =", blur_sigma)
-        bb = gaussian_blur(img, blur_sigma)
+        #bb = gaussian_blur(img, blur_sigma)
         #print(bb.max(), bb.min())
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

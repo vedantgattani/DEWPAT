@@ -12,7 +12,7 @@ from mpl_toolkits.mplot3d import Axes3D, axes3d
 
 def main_single_display(args):
     assert os.path.exists(args.input), "Input " + args.input + " does not exist."
-    img, R, G, B, orig_mask = load_helper(args.input)
+    img, R, G, B, orig_mask = load_helper(args.input, blur_sigma=args.blur)
 
     #---------------------------------------------------------------------------------#
 
@@ -518,6 +518,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=overall_desc)
     # Input image
     parser.add_argument('input', type=str, help='Input: either a folder or an image')
+    # Preprocessing options
+    parser.add_argument('--blur', type=float, default=0.0,
+        help='Specify Gaussian blur standard deviation applied to the image')
     # Plotting options
     parser.add_argument('--show_img', dest='show_img', action='store_true',
         help='Whether to display the input image')

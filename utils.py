@@ -370,8 +370,17 @@ def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None
 
 ### IO ###
 
-def load_helper(image_path, verbose=True):
+def load_helper(image_path, verbose=True, blur_sigma=None):
     img = io.imread(image_path)
+    if not blur_sigma is None:
+        assert blur_sigma >= 0.0, "Untenable blur kernel width"
+        if blur_sigma > 1e-5:
+            if verbose: print("\tBlurring with sigma =", blur_sigma)
+            #bb = gaussian_blur(img, blur_sigma)
+            #print(bb.max(), bb.min())
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                img = skimage.img_as_ubyte( gaussian_blur(img, blur_sigma) )
     H, W, C = img.shape
     if verbose: print("Loaded image", image_path, "(Size: %s)" % str(img.shape))
     # Computing mask
