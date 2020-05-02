@@ -393,7 +393,7 @@ def load_helper(image_path, verbose=True):
 
 ### Block extraction and pairwise moment comparison methods ###
 
-def pairwise_moment_distances(img, mask, block_cuts, gamma_cov_weight, display_intermeds, verbose):
+def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_weight, display_intermeds, verbose):
     """
     Divides the input img into non-overlapping blocks.
     Note: if a patch is *entirely* masked, it is removed from consideration.
@@ -463,16 +463,16 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_cov_weight, display_i
             # Mean distance
             mean_i = means[i]
             mean_j = means[j]
-            mean_distance = np.sqrt( ((mean_i - mean_j)**2).sum() + 1e-8 ) / channel_len
+            mean_distance = np.sqrt( ((mean_i - mean_j)**2).sum() + 1e-7 ) / channel_len
             # Covariance distance
             if gamma_cov_weight < 1e-6:
                 c_dist = 0
             else:
                 cov_i = covs[i]
                 cov_j = covs[j]
-                c_dist = np.sqrt( ( np.abs(cov_i - cov_j) ).sum() + 1e-8 ) / C_squared
+                c_dist = np.sqrt( ( np.abs(cov_i - cov_j) ).sum() + 1e-7 ) / C_squared
             # Total distance
-            D[i,j] = mean_distance + gamma_cov_weight * c_dist
+            D[i,j] = gamma_mu_weight * mean_distance + gamma_cov_weight * c_dist
             D[j,i] = D[i,j]
     if verbose: print("\nDistances:\n", D)
     # The final complexity is the average pairwise distance between the moments of the patches

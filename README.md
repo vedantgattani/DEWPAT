@@ -166,7 +166,7 @@ By default, this method utilizes *non-overlapping* patches.
 This measure is similar to the one just above, except that it considers the second moment (the covariance) as well:
 ```math
 \mathcal{D}_{\mathcal{M},2}(I) = \frac{1}{|P|^2} \sum_{p_i,p_j\in P}
-\frac{1}{|C|}   || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2 +
+\frac{\gamma_\mu}{|C|}   || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2 +
 \frac{\gamma_C}{|C|^2} || \widehat{\Sigma}(p_i) - \widehat{\Sigma}(p_j) ||_{1,1/2}
 ```
 where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`||M||_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.

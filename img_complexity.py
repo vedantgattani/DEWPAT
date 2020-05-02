@@ -112,6 +112,10 @@ group_p.add_argument('--wt_n_levels', type=int, default=4,
     help='Controls the number of decomposition levels used by the discrete wavelet transform')
 group_p.add_argument('--wt_mother_wavelet', type=str, default='haar',
     help='Controls the type of mother wavelet used by the discrete wavelet transform')
+group_p.add_argument('--gamma_mu_weight', type=float, default=1.0,
+    help='Specifies the weight on the mu distance in the patch moment measure')
+group_p.add_argument('--gamma_cov_weight', type=float, default=1.0,
+    help='Specifies the weight on the covariance matrix distance in the patch moment measure')
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -686,7 +690,9 @@ def compute_complexities(impath,    # Path to input image file
         @timing_decorator(args.timing)
         def patchwise_mean_dist(img, mask):
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS,
-                    gamma_cov_weight=0, display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
+                    gamma_mu_weight=1.0,
+                    gamma_cov_weight=0.0, 
+                    display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
         add_new(patchwise_mean_dist(img, mask_pwmm), 9)
 
     #--------------------------------------------------------------------------------------------------------------------#
@@ -698,11 +704,13 @@ def compute_complexities(impath,    # Path to input image file
             show_pw_mnt_ptchs2 = False
         else:
             show_pw_mnt_ptchs2 = show_pw_mnt_ptchs
-        if verbose: print('Computing patch-wise distances between moments')
+        if verbose: print('Computing patch-wise distances between central moments')
         @timing_decorator(args.timing)
         def patchwise_moment_dist(img, mask):
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS, 
-                    gamma_cov_weight=1, display_intermeds=show_pw_mnt_ptchs2, verbose=verbose)
+                    gamma_mu_weight=args.gamma_mu_weight,
+                    gamma_cov_weight=args.gamma_cov_weight, 
+                    display_intermeds=show_pw_mnt_ptchs2, verbose=verbose)
         add_new(patchwise_moment_dist(img, mask_pwmm), 10)
 
     #--------------------------------------------------------------------------------------------------------------------#
