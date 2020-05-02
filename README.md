@@ -159,7 +159,8 @@ Computes the average pairwise distance between the first moments (means) of the 
 || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2
 ```
 where $`\widehat{\mu}(p)\in\mathbb{R}^3`$ is the mean pixel value over patch $`p`$.
-By default, this method utilizes *non-overlapping* patches.
+
+By default, this method utilizes *non-overlapping* patches (as do the other divergences).
 
 ### Pairwise Distance between Patch Moments
 
@@ -170,7 +171,14 @@ This measure is similar to the one just above, except that it considers the seco
 \frac{\gamma_C}{|C|^2} || \widehat{\Sigma}(p_i) - \widehat{\Sigma}(p_j) ||_{1,1/2}
 ```
 where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`||M||_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.
-By default, this method utilizes *non-overlapping* patches as well and sets $`\gamma_C=1`$.
+
+We can also compute the pairwise distance based on these moments, using distributional divergences. 
+These correspond to Gaussian (maximum entropy) assumptions on the pixel distributions per patch 
+    (i.e., the minimum information assumption given the moments).
+This includes options for the Jeffrey's (symmetric KL) divergence, the Wasserstein-2 metric, the squared Hellinger distance, the Bhattacharyya distance, and the Forstner-Moonen Abou-Moustafa-Torres-Ferries (FM-ATF) density metric (see "Designing a Metric for the Difference Between Gaussian Densities"). 
+See the `--pwg_*` options.
+
+By default, this method utilizes *non-overlapping* patches as well and sets $`\gamma_C=\gamma_\mu=1`$.
 
 ### DWT coefficients
 

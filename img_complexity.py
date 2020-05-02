@@ -87,6 +87,27 @@ group_c.add_argument('--wavelet_details',
         dest='wavelet_details', action='store_const',
         const=11, default=None,
         help='Whether to use the absolute values of the wavelet detail coefficients to measure complexity')
+group_c.add_argument('--pwg_jeffreys_div',
+        action='store_const',
+        const=12, default=None,
+        help='Whether to use the pairwise Gaussian symmetrized KL divergence across image patches')
+group_c.add_argument('--pwg_w2_div',
+        action='store_const',
+        const=13, default=None,
+        help='Whether to use the pairwise Gaussian Wasserstein-2 divergence across image patches')
+group_c.add_argument('--pwg_hellinger_div',
+        action='store_const',
+        const=14, default=None,
+        help='Whether to use the pairwise Gaussian squared Hellinger divergence across image patches')
+group_c.add_argument('--pwg_bhattacharyya_div',
+        action='store_const',
+        const=15, default=None,
+        help='Whether to use the pairwise Gaussian Bhattacharyya divergence across image patches')
+group_c.add_argument('--pwg_fmatf_div',
+        action='store_const',
+        const=16, default=None,
+        help='Whether to use the pairwise Gaussian FM-ATF divergence across image patches')
+
 # Algorithm parameters
 group_p = parser.add_argument_group('Algorithmic parameters',
             description='Options controlling parameters of complexity estimation algorithms')
@@ -116,6 +137,9 @@ group_p.add_argument('--gamma_mu_weight', type=float, default=1.0,
     help='Specifies the weight on the mu distance in the patch moment measure')
 group_p.add_argument('--gamma_cov_weight', type=float, default=1.0,
     help='Specifies the weight on the covariance matrix distance in the patch moment measure')
+group_p.add_argument('--pw_mnt_dist_nonOL_WS', type=str, default="3,4", 
+    help='Specifies the number of patches when discretizing for the pairwise patch distance measures')
+
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
             description='Options for viewing intermediate computations.')
@@ -163,14 +187,19 @@ S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
           'Average Gradient Magnitude', 'Pixelwise Differential Entropy',
           'Patchwise Differential Entropy', 'Global Patch Covariance',
           'Pairwise Wasserstein Distance', 'Pairwise Mean Distances',
-          'Pairwise Moment Distances', 'Wavelet Detail Coef']
+          'Pairwise Moment Distances', 'Wavelet Detail Coef',
+          'PWG Jeffreys Divergence', 'PWG Wass2 Divergence', 'PWG Hellinger Divergence',
+          'PWG Bhattacharyya Divergence', 'PWG FM-ATF Divergence' ]
 # Discern which measures to use
 input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon, 
                args.weighted_fourier, args.local_covars, 
                args.grad_mag, args.diff_shannon_entropy, 
                args.diff_shannon_entropy_patches, args.global_patch_covar, 
                args.pairwise_emd, args.pairwise_mean_distances,
-               args.pairwise_moment_distances, args.wavelet_details ]
+               args.pairwise_moment_distances, args.wavelet_details,
+               args.pwg_jeffreys_div, args.pwg_w2_div, args.pwg_hellinger_div,
+               args.pwg_bhattacharyya_div, args.pwg_fmatf_div ]
+assert len(S_all) == len(input_vals)
 if all(map(lambda k: k is None, input_vals)):
     # No metric specified
     if args.verbose: print('Using all complexity measures except Pairwise EMD')
@@ -217,7 +246,7 @@ def compute_complexities(impath,    # Path to input image file
         emd_window_size=24,         # Window size for pairwise EMD
         emd_window_step=16,         # Window step for pairwise EMD
         # Mean and moment distances parameters
-        pw_mnt_dist_nonOL_WS=(3,4), # Non-overlapping patches to segment the image into for moment distances
+        #pw_mnt_dist_nonOL_WS=(3,4), # Non-overlapping patches to segment the image into for moment distances
         ### Visualization Options ###
         use_gradient_image = False, # Whether to use channel-wise gradient image instead of the raw input
         show_fourier_image = False, # Whether to display Fourier-based images
@@ -676,12 +705,15 @@ def compute_complexities(impath,    # Path to input image file
 
     #--------------------------------------------------------------------------------------------------------------------#    
 
-    # HACK: Mask handling for measures > 9
+    # HACK 1: Mask handling for measures > 9
     if using_alpha_mask:
         mask_pwmm = alpha_mask
     else:
         mask_pwmm = np.ones((h,w), dtype=int)
 
+    # HACK 2: pw-mnt discretization parameter
+    pw_mnt_dist_nonOL_WS = list(map(int, args.pw_mnt_dist_nonOL_WS.strip().split(",")))
+    
     # TODO ok for scalar images?
 
     # Measure 9: mean-matching pairwise distances
@@ -726,6 +758,44 @@ def compute_complexities(impath,    # Path to input image file
             return get_dwt_complexity(img, mask, levels=args.wt_n_levels, thrPercentile=args.wt_threshold_percentile,
                         mWavelet=args.wt_mother_wavelet)
         add_new(dwt_complexity_handler(img, mask_pwmm), 11)
+
+    #--------------------------------------------------------------------------------------------------------------------#
+    
+    # Measure 12: Pairwise distributional patch matching - Symmetric KL divergence (Jeffrey's divergence)
+    # Measure 13: Pairwise distributional patch matching - Wasserstein-2 metric
+    # Measure 14: Pairwise distributional patch matching - Hellinger distance
+    # Measure 15: Pairwise distributional patch matching - Bhattacharyya distance
+    # Measure 16: Pairwise distributional patch matching - Mean-normed FM-eigendistance (FM-ATF)
+    # Based on the Forstner-Moonen metric on covariance matrices and the Bhattacharyya-normalized
+    #   mean-matching term, similar to Abou-Moustafa and Ferrie, 2012.
+    _metric_dict = { 12 : 'pw_symmetric_KL',  13 : 'pw_W2', 14 : 'pw_Hellinger',
+                     15 : 'pw_bhattacharyya', 16 : 'pw_FMATF' }
+    _set_shown_pw = False
+    for _p_com in [12, 13, 14, 15, 16]:
+        if _p_com in complexities_to_use:
+            if verbose: print('Computing pairwise distributional patch-matching distance', _metric_dict[_p_com])
+            # If we were going to show the patches, we did so in 9 (if it was specified) or 10.
+            if 9 in complexities_to_use or 10 in complexities_to_use: 
+                show_pw_mnt_ptchs_curr = False
+            else:
+                if not _set_shown_pw: # we haven't asked to show yet
+                    show_pw_mnt_ptchs_curr = show_pw_mnt_ptchs
+                    # Now that we have specified to show the pw moment patches (if it were asked for), we must ensure
+                    # that next targets in the loop do not also do so
+                    _set_shown_pw = True 
+                else: # set_show was true -> we've already seen it
+                    show_pw_mnt_ptchs_curr = False
+            # Define and run the current PW matcher
+            @timing_decorator(args.timing)
+            def patchwise_moment_dist_c(img, mask):
+                return pairwise_moment_distances(img, mask, 
+                        block_cuts        = pw_mnt_dist_nonOL_WS, # TODO option for overlapping as well
+                        gamma_mu_weight   = None,
+                        gamma_cov_weight  = None,
+                        display_intermeds = show_pw_mnt_ptchs_curr, 
+                        verbose           = verbose,
+                        mode              = _metric_dict[_p_com] )
+            add_new(patchwise_moment_dist_c(img, mask_pwmm), _p_com)
 
     ### </ Finished computing complexity measures /> ###
 

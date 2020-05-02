@@ -6,6 +6,7 @@ from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D, axes3d
 from skimage import io
+from prob import gaussian_prob_divergence
 
 ### Visualization helpers ###
 
@@ -393,12 +394,19 @@ def load_helper(image_path, verbose=True):
 
 ### Block extraction and pairwise moment comparison methods ###
 
-def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_weight, display_intermeds, verbose):
+def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_weight, display_intermeds, verbose, mode='central'):
     """
     Divides the input img into non-overlapping blocks.
     Note: if a patch is *entirely* masked, it is removed from consideration.
+
+    TODO: options for other matrix norms in central moment distance.
     """
     assert img.max() > 1, "Unexpected pixel scaling encountered"
+    if mode != 'central': 
+        assert gamma_mu_weight is None and gamma_cov_weight is None
+        assert mode in [ 'pw_symmetric_KL',  'pw_W2', 'pw_Hellinger',
+                         'pw_bhattacharyya', 'pw_FMATF' ]
+    # Correct the image pixel values
     img = img / 255.0
     ### Extract non-overlapping image blocks ###
     img_blocks, mask_blocks = blockify(img, mask, block_cuts, verbose)
@@ -408,8 +416,10 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     patches = img_blocks.reshape(N_total, BS_h, BS_w, C)
     mpatches = mask_blocks.reshape(N_total, BS_h, BS_w)
     if display_intermeds:
-        patch_display(patches, nr, nc, show=False, title="Image Patches", subtitles=None, hide_axes=True)
-        patch_display(mpatches, nr, nc, show=False, title="Mask Patches",  subtitles=None, hide_axes=True)
+        patch_display(patches, nr, nc, show=False, 
+                title="Image Patches", subtitles=None, hide_axes=True)
+        patch_display(mpatches, nr, nc, show=False, 
+                title="Mask Patches",  subtitles=None, hide_axes=True)
     ### Now compute the pairwise distances between the moments ###
     # Using masked arrays to get moments for masked patches
     def get_masked_array(patch, patch_mask):
@@ -457,23 +467,27 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     channel_len = 3
     C_squared = channel_len**2
     N_valid_squared = n_valid**2
-    D = -np.ones((n_valid,n_valid))
-    for i in range(n_valid):
-        for j in range(i,n_valid): # i know, +1, just checking
-            # Mean distance
-            mean_i = means[i]
-            mean_j = means[j]
-            mean_distance = np.sqrt( ((mean_i - mean_j)**2).sum() + 1e-7 ) / channel_len
-            # Covariance distance
-            if gamma_cov_weight < 1e-6:
-                c_dist = 0
-            else:
-                cov_i = covs[i]
-                cov_j = covs[j]
-                c_dist = np.sqrt( ( np.abs(cov_i - cov_j) ).sum() + 1e-7 ) / C_squared
-            # Total distance
-            D[i,j] = gamma_mu_weight * mean_distance + gamma_cov_weight * c_dist
-            D[j,i] = D[i,j]
+    if mode == 'central':
+        D = -np.ones((n_valid,n_valid))
+        # Loop pairwise over the estimated means and covariances
+        for i in range(n_valid):
+            for j in range(i,n_valid): # i know, +1, just checking
+                # Mean distance
+                mean_i = means[i]
+                mean_j = means[j]
+                mean_distance = np.sqrt( ((mean_i - mean_j)**2).sum() + 1e-7 ) / channel_len
+                # Covariance distance
+                if gamma_cov_weight < 1e-6:
+                    c_dist = 0
+                else:
+                    cov_i = covs[i]
+                    cov_j = covs[j]
+                    c_dist = np.sqrt( ( np.abs(cov_i - cov_j) ).sum() + 1e-7 ) / C_squared
+                # Total distance
+                D[i,j] = gamma_mu_weight * mean_distance + gamma_cov_weight * c_dist
+                D[j,i] = D[i,j]
+    else:
+        D = gaussian_prob_divergence(mode=mode, means=means, covs=covs)
     if verbose: print("\nDistances:\n", D)
     # The final complexity is the average pairwise distance between the moments of the patches
     # Note that the diagonals of D should be ~zero, and the matrix should be symmetric.
