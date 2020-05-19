@@ -91,9 +91,10 @@ def jeffreys_div_gauss(mu1, mu2, sigma1, sigma2, sigma1_inverse, sigma2_inverse)
 def wass2_div_gauss(mu1, mu2, sigma1, sigma2, sigma1_sqrt, sigma2_sqrt):
     """ Wasserstein-2 divergence between two Gaussians """
     mean_diff = ( (mu1 - mu2)**2 ).sum()
-    inner_bal = SLA.sqrtm( sigma2_sqrt @ sigma1 @ sigma2_sqrt ) 
+    I = np.eye(3)
+    inner_bal = SLA.sqrtm( sigma2_sqrt @ sigma1 @ sigma2_sqrt + I*1e-7 ) 
     cov_diff  = np.trace( sigma1 + sigma2 - 2*inner_bal)
-    return mean_diff + cov_diff
+    return np.clip(mean_diff + cov_diff, a_min = 1e-7, a_max = None)
 
 def hellinger_div_gauss(mu1, mu2, sigma1, sigma2, det_sigma1, det_sigma2):
     """ Hellinger divergence between two Gaussians (technically the squared Hellinger distance) """
