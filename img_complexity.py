@@ -284,6 +284,7 @@ def compute_complexities(impath,    # Path to input image file
     if verbose: print('Reading image:', impath)
     img = skimage.io.imread(impath)
     n_channels = img.shape[2]
+    
     # Downscale image, if desired
     resize_factor_main = args.resize
     assert resize_factor_main > 0.0, "--resize must be positive"
@@ -303,6 +304,7 @@ def compute_complexities(impath,    # Path to input image file
                 plt.show()
             alpha_layer[ alpha_layer >  128 ] = 255
             alpha_layer[ alpha_layer <= 128 ] = 0
+    
     # Handle alpha transparency
     alpha_channel = img[:,:,3] if n_channels == 4 else None
     using_alpha_mask = not (alpha_channel is None)
@@ -317,9 +319,11 @@ def compute_complexities(impath,    # Path to input image file
     else:
         alpha_mask = None
 
+    # Ignore the alpha channel, if desired
     if args.ignore_alpha:
         using_alpha_mask = False
         alpha_mask, alpha_channel = None, None
+    
     # Convert image to greyscale, if desired
     is_scalar = False
     gs_type = args.greyscale.lower()
@@ -332,6 +336,7 @@ def compute_complexities(impath,    # Path to input image file
         if verbose: print("Greyscaling image (channel mean)")
         img = to_avg_greyscale(img)
         is_scalar = True
+
     # Blur image, if desired
     blur_sigma = args.blur
     assert blur_sigma >= 0.0, "Untenable blur kernel width"
@@ -342,12 +347,14 @@ def compute_complexities(impath,    # Path to input image file
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             img = skimage.img_as_ubyte( gaussian_blur(img, blur_sigma) )
+    
     # Switch to channel-wise gradient magnitude image if desired
     if use_gradient_image:
         if verbose: print('Using gradient magnitude image')
         img = generate_gradient_magnitude_image(img, to_ubyte=True) # Overwrite
+    
     # Perform masking directly on the image (to destroy details hidden behind the alpha channel)
-    if using_alpha_mask:
+    if using_alpha_mask and not args.ignore_alpha:
         img[ alpha_mask <= 0 ] = 0
     if display_image: imdisplay(img, 'Image')
     if verbose:
@@ -355,6 +362,7 @@ def compute_complexities(impath,    # Path to input image file
         print('Channelwise Min/Max')
         for i in range(3):
             print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))
+    
     # Image dimensions and center
     h, w = img.shape[0:2]
     c = h / 2 - 0.5, w / 2 - 0.5

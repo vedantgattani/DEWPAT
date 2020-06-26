@@ -28,6 +28,8 @@ def main():
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
     parser.add_argument('--blur', type=float, default=1.0,
         help='Specify Gaussian blur standard deviation applied to the image (default: 1)')
+    parser.add_argument('--ignore_alpha', action='store_true', 
+        help='Pass to ask the algorithm to ignore the alpha channel (default: False)')
     parser.add_argument('--clustering_colour_space', default='rgb',
         choices=['rgb', 'hsv', 'cie', 'lab'],
         help='Specify the colour space in which to perform the clustering')
@@ -190,6 +192,8 @@ def main_helper(img_path, args):
                 anti_aliasing=True, multichannel=True)
         img = utils.conv_to_ubyte(img)
         if args.verbose: print("Resized dims:", img.shape)
+    
+    # Handle masking (alpha transparency)
     mask = None
     if n_channels == 4:
         a = img[:, :, 3]
@@ -198,14 +202,19 @@ def main_helper(img_path, args):
         mask[ a >  128 ] = 1 # 255
         mask[ a <= 128 ] = 0
         # Zero out the background
-        img *= mask[:,:,np.newaxis]
-    
+        if not args.ignore_alpha:
+            img *= mask[:,:,np.newaxis]
+
+    # Default mask: non-transparent alpha channel
     H, W, C = img.shape
-    if mask is None: mask = np.ones( (H,W) )
+    if (mask is None) or args.ignore_alpha: 
+        mask = np.ones( (H,W) )
+
     # Gaussian filter if desired
     if args.blur > 1e-8:
         if args.verbose: print("\tBlurring with sigma =", args.blur)
         img = gauss_filter(img, args.blur)
+
     if args.verbose: 
         print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,C), 
               img.min(0).min(0), img.max(0).max(0))
