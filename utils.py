@@ -370,7 +370,7 @@ def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None
 
 ### IO ###
 
-def load_helper(image_path, verbose=True, blur_sigma=None):
+def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_channels=True):
     img = io.imread(image_path)
     if not blur_sigma is None:
         assert blur_sigma >= 0.0, "Untenable blur kernel width"
@@ -392,13 +392,15 @@ def load_helper(image_path, verbose=True, blur_sigma=None):
         bool_mask = (orig_mask > midvalue)
         int_mask = bool_mask.astype(int)
         img = img[:,:,0:3]
+        if apply_alpha_to_rgb_channels:
+            img = int_mask.reshape(H,W,1) * img
         R, G, B = (img[:,:,0][bool_mask], img[:,:,1][bool_mask], img[:,:,2][bool_mask])
     else:
         if verbose: print("\tNo alpha channel present.")
         R, G, B = img[:,:,0].flatten(), img[:,:,1].flatten(), img[:,:,2].flatten()
         orig_mask = None
     # At this point, img is always H X W x 3; mask is either None or H x W (boolean/byte)
-    # R, G, and B are vectors
+    # R, G, and B are vectors; img is ubyte type.
     return img, R, G, B, orig_mask
 
 ### Block extraction and pairwise moment comparison methods ###
