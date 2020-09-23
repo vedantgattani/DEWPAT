@@ -258,12 +258,6 @@ python seg.py <target> --kmeans_k_file_list k.csv --verbose \
               --seg_stats_output_file cluster_data.csv
 ```
 
-## TODO
-
-- Operations on scalar images are not optimized
-- EMD method likely has a bug in the alpha handling. Having a separate resizing argument is also not ideal.
-- seg matrix should be bistochastic when normalized?
-
 ## Acknowledgements
 
 The differential entropy measures utilize the *Non-parametric Entropy Estimation Toolbox* by Greg Ver Steeg.
