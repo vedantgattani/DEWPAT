@@ -233,17 +233,16 @@ def conv_to_ubyte(img):
 
 # Note: calling this as a decorator actually runs it, so that
 # replacer is the actual decorator used.
-def timing_decorator(do_timing):
+def timing_decorator():
     def decorator(wrapped_func):
-        if do_timing:
-            def replacement(*args, **kwargs):
-                start = timer()
-                output = wrapped_func(*args, **kwargs)
-                end = timer()
-                return output, (end - start)
-            return replacement
-        else:
-            return wrapped_func
+        def replacement(*args, **kwargs):
+            start = timer()
+            output = wrapped_func(*args, **kwargs)
+            end = timer()
+            if 'timing' in kwargs and not kwargs['timing']:
+                return output
+            return output, (end - start)
+        return replacement
     return decorator
 
 ### Array Helpers ###

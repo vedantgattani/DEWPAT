@@ -17,17 +17,17 @@ def main_single_display(args):
     #---------------------------------------------------------------------------------#
 
     ### Show the original image ###
-    if args.show_img: display_orig(img, orig_mask, args)
+    if args.show_img: display_orig(img, orig_mask, args.input)
     ### Show HSV decomposition ###
-    if args.show_hsv: display_hsv(img, orig_mask, args)
+    if args.show_hsv: display_hsv(img, orig_mask)
     ### Polar Hue histogram from HSV ###
-    if args.hist_hsv_polar: plot_polar_hsv(img, orig_mask, args)
+    if args.hist_hsv_polar: plot_polar_hsv(img, orig_mask)
     ### Show Scalar colormap index image ###
     if args.show_twilight_img: # TODO other maps
-        plot_colour_mapped_scalar_image(img, orig_mask, args, 'twilight')
+        plot_colour_mapped_scalar_image(img, orig_mask, 'twilight')
     ### Polar Colour histogram from named colormaps ###
     if args.hist_twilight_polar: # TODO other maps
-        plot_polar_generic(img, orig_mask, args, 'twilight')
+        plot_polar_generic(img, orig_mask, 'twilight')
     ### 1D RGB histograms ###
     if args.hist_rgb_1d: plot_1D_rgb(R, G, B)
     ### 3D RGB histograms ###
@@ -216,7 +216,7 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
     # Return: (1D pseudocolors per pixel, histogram values per bin, bin edge values, bin edge color values)
     return single_dim_P, n, bins, np.array([C(b)[0:3] for b in bins])
 
-def display_hsv(img, orig_mask, args, fix_color_interval=True):
+def display_hsv(img, orig_mask, fix_color_interval=True):
     names = ['Original', 'Hue', 'Saturation', 'Value']
     img = img[:,:,0:3] / 255
 
@@ -270,7 +270,7 @@ def display_hsv(img, orig_mask, args, fix_color_interval=True):
     cbar_ax = fig.add_axes([lstart, Bm - cb_pad, clen2, CW2])
     fig.colorbar(q[2], cax=cbar_ax, orientation='horizontal')
 
-def plot_polar_generic(img, orig_mask, args, f, apply_mask=True, log_histo=False):
+def plot_polar_generic(img, orig_mask, f, apply_mask=True, log_histo=False):
     """
     Args are the same as plot_polar_hsv except the colormap function
         f : [0,1] -> [0,1]^3
@@ -302,7 +302,7 @@ def _to_cm_function(f):
     if type(f) is str:
         return plt.cm.get_cmap(f)
 
-def plot_colour_mapped_scalar_image(img, orig_mask, args, C):
+def plot_colour_mapped_scalar_image(img, orig_mask, C):
     # TODO: option to pass C as a function
     Cname = C
     C = _to_cm_function(C)
@@ -318,7 +318,7 @@ def plot_colour_mapped_scalar_image(img, orig_mask, args, C):
     fig.colorbar(ims, #plt.cm.ScalarMappable(norm=norm, cmap=C),
                  ax=ax, orientation='vertical', fraction=0.1)
 
-def plot_polar_hsv(img, orig_mask, args, apply_mask=True, log_histo=False):
+def plot_polar_hsv(img, orig_mask, apply_mask=True, log_histo=False):
     print('Generating polar plot')
     img = img[:,:,0:3] / 255
     hsv_img = skcolor.rgb2hsv(img)
@@ -405,12 +405,12 @@ def transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True, n_search_bins=2
         print('RGBs', R[rinds], G[rinds], B[rinds])
     return single_dim_P
 
-def display_orig(img, orig_mask, args):
-    imdisplay(img, title="Original Image (%s)" % args.input)
+def display_orig(img, orig_mask, input):
+    imdisplay(img, title="Original Image (%s)" % input)
     if not orig_mask is None:
         fig, ax = plt.subplots()
         ax.imshow(orig_mask)
-        plt.title('Mask (%s)' % args.input)
+        plt.title('Mask (%s)' % input)
 
 def plot_density_proj(R, G, B,
                       verbose=True,
