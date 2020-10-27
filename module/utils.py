@@ -6,7 +6,7 @@ from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D, axes3d
 from skimage import io
-from prob import gaussian_prob_divergence
+from .prob import gaussian_prob_divergence
 
 ### Visualization helpers ###
 
