@@ -182,8 +182,13 @@ By default, this method utilizes *non-overlapping* patches as well and sets $`\g
 
 ### DWT coefficients
 
-Computes the sum of the absolute values of DWT detail coefficients $`c`$ extracted from the image (see [this page](https://en.wikipedia.org/wiki/Discrete_wavelet_transform) for more details about DWT): The coefficients used correspond to a subset $`C`$ of the horizontal, vertical and diagonal coefficients.
-By default, this subset corresponds to the largest 1% coefficients. 4 levels of DWT are applied using the Haar mother wavelet.
+This measure is based on how much information is contained in the largest DWT detail coefficients $`D`$ extracted from an image $`I`$ of size $`M \times N`$.
+
+```math
+S_{DWT} = \frac{1}{MN}\sum_{d_i \in D}|d_i|
+```
+
+By default, we define $`D`$ as the set of the largest (in absolute value) 1% horizontal, vertical, and diagonal coefficients. 4 levels of DWT are applied using the Haar mother wavelet.
 
 ## Visualization
 
