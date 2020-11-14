@@ -176,7 +176,7 @@ We can also compute the pairwise distance based on these moments, using distribu
 These correspond to Gaussian (maximum entropy) assumptions on the pixel distributions per patch 
     (i.e., the minimum information assumption given the moments).
 This includes options for the Jeffrey's (symmetric KL) divergence, the Wasserstein-2 metric, the squared Hellinger distance, the Bhattacharyya distance, and the Forstner-Moonen Abou-Moustafa-Torres-Ferries (FM-ATF) density metric (see "Designing a Metric for the Difference Between Gaussian Densities"). 
-See the `--pwg_*` options.
+See the `--pwg_*` options, and also [this readme](module/README.md).
 
 By default, this method utilizes *non-overlapping* patches as well and sets $`\gamma_C=\gamma_\mu=1`$.
 
