@@ -14,20 +14,34 @@ Thus, we consider a family of complexity measures on an image $`I`$ defined by
 ```
 where $`P`$ is the set of patches, $`\mathcal{G}_i`$ is the Gaussian corresponding to patch $`i`$, and $`\mathfrak{D}`$ is a particular parameterizing choice of information-theoretic divergence, the options for which are detailed below. Note that these divergences (and hence the resulting metrics) are simple to compute and computationally tractable, due to the Gaussian assumption.
 
+Implementation-wise, we consider $`\mathfrak{D} \in \{ \mathfrak{D}_{\mathcal{J}}, \mathfrak{D}_{W_2}, \mathfrak{D}_B, \mathfrak{D}_H, \mathfrak{D}_\text{FMATF} \}`$. 
+
+In the following, let $`\mathcal{P},\mathcal{Q}`$ be probability distributions over $`x\in X`$, and $`f_p,f_q`$ be their respective densities.
+
 ### Jeffrey's Divergence
 
+Jeffrey's divergence is simply the symmetric KL-divergence:
+```math
+\mathfrak{D}_\mathcal{J}\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] = \frac{1}{2} \mathfrak{D}_\text{KL}\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] + \frac{1}{2} \mathfrak{D}_\text{KL}\left[ \mathcal{G}_j \mid\mid \mathcal{G}_i \right],
+```
+where 
+```math
+\mathfrak{D}_\text{KL}[\mathcal{P},\mathcal{Q}] = \int_X f_p(x) \log\left( \frac{f_p(x)}{f_q(x)} \right) \, dx.
+```
 
 ### Wasserstein-2 Metric 
 
-
-### Bhattacharyya distance
-
-For notational simplicity, define the Bhattacharyya coefficient
+For the specific case of Gaussian distributions, the Wasserstein-2 distance simplifies down to the following form:
 ```math
-\mathcal{B}[\mathcal{P},\mathcal{Q}] = \int \sqrt{p(x) q(x)} \, dx,
+\mathfrak{D}_{W_2}\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] = || \widehat{\mu}_i - \widehat{\mu}_j ||_2^2 + \text{tr}\left( \widehat{\Sigma}_i + \widehat{\Sigma}_j - 2[\widehat{\Sigma}_j^{1/2} \widehat{\Sigma}_i \widehat{\Sigma}_j^{1/2}]^{1/2} \right).
 ```
-where $`\mathcal{P},\mathcal{Q}`$ are probability distributions over $`x`$, and $`p,q`$ are their respective densities.
 
+### Bhattacharyya distance 
+
+For notational brevity, define the Bhattacharyya coefficient as
+```math
+\mathcal{B}[\mathcal{P},\mathcal{Q}] = \int_X \sqrt{f_p(x) f_q(x)} \, dx.
+```
 Then the Bhattacharyya distance is simply given by
 ```math
 \mathfrak{D}_B\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] = -\log\mathcal{B}[\mathcal{G}_i, \mathcal{G}_j].
@@ -37,14 +51,27 @@ Then the Bhattacharyya distance is simply given by
 
 Utilizing the notation just above, the squared Hellinger distance is given by 
 ```math
-\mathfrak{D}_B\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] = \sqrt{ 1 - \mathcal{B}[\mathcal{G}_i, \mathcal{G}_j] }.
+\mathfrak{D}_H\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] = \sqrt{ 1 - \mathcal{B}[\mathcal{G}_i, \mathcal{G}_j] }.
 ```
 
 ### Forstner-Moonen Abou-Moustafa-Torres-Ferries (FM-ATF) density metric
 
 Folllowing [3,4], we utilize the following metric
+```math
+\mathfrak{D}_\text{FMATF}\left[ \mathcal{G}_i \mid\mid \mathcal{G}_j \right] = d_\mu(\mathcal{G}_i, \mathcal{G}_j)^{1/2} + d_\sigma(\mathcal{G}_i, \mathcal{G}_j)^{1/2},
+```
+where the normalized (Mahalanobis) distance between means is given by
+```math
+d_\mu(\mathcal{G}_i, \mathcal{G}_j) = (\widehat{\mu}_i - \widehat{\mu}_j)^T \widehat{\Sigma}_a^{-1} (\widehat{\mu}_i - \widehat{\mu}_j),
+```
+with $`\widehat{\Sigma}_a = (\widehat{\Sigma}_i + \widehat{\Sigma}_j) / 2`$,
+and the squared FM metric [4] on SPD matrices is written
+```math
+d_\sigma(\mathcal{G}_i, \mathcal{G}_j) = \sum_\ell \log (\lambda_\ell)^2 
+```
+with $`\text{diag}(\lambda_1,\ldots,\lambda_K) = \Lambda`$ satisfying the generalized eigenvalue problem $`\widehat{\Sigma}_i V = \Lambda \widehat{\Sigma}_j V`$.
 
-
+Note that this formulation is also specific to Gaussians.
 
 ## References
 
