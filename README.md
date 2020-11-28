@@ -96,7 +96,9 @@ Computes the mean discrete Shannon entropy within local image patches, via
 Computes the weighted average of the Fourier coefficient values, with weights based on the associated frequency value, such that
 ```math
 \mathcal{F}_w(I) = \frac{1}{Z_\gamma} \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y)\, \mathcal{I}_F(\psi_x,\psi_y),
-\,\;\text{ where}\;\;
+```
+where 
+```math
 \mathcal{I}_F = \frac{1}{|C|}\sum_{c\in C} \log \left| \mathfrak{F}[c] \right|
 \;\;\text{and}\;\;
 Z_\gamma = \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y),
@@ -138,7 +140,6 @@ Estimates the differential entropy of the distribution of patches over the image
 Computes the log-determinant of the global covariance matrix over patches in the image, where again each multi-channel patch is unfolded into a single vector; i.e.,
 ```math
 \mathcal{C}_{G}(I) = \log\left( \det\left( \widehat{C}(P) \right) \right)
-                                   max_eps = np.inf,
 ```
 Note that trace instead of determinant is used in the greyscale case.
 
