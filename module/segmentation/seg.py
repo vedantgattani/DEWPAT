@@ -11,6 +11,18 @@ from ..utils import Formatter, gaussian_blur
 
 ### Label (cluster/segment) the image ###
 def reorder_label_img(LI, verbose=False):
+    """ Reorders the labels in 'LI'.
+
+    Given N clusters, the clusters are ordered by decreasing size and
+    assigned labels from 1 to N. The background label -1 is not changed.
+
+    Args:
+        LI: A 2D array of labels.
+        verbose: Optional; Print verbosely if True. False by default.
+    
+    Returns:
+        A 2D array of the reordered labels.
+    """
     if verbose: print('\tReordering label image')
     LI = np.rint(LI).astype(int)
     labels_list = LI.flatten().astype(int).tolist()
@@ -27,6 +39,18 @@ def reorder_label_img(LI, verbose=False):
     return LI_new
 
 def k_dependent_smaller_clusters_merging_threshold(k, kdep_param=0.05):
+    """ Returns the k-dependent cluster merging threshold.
+
+    The threshold is given by
+        T0 / (k-1)
+    where T0 is the initial threshold value for k=2 clusters and k
+    is the number of clusters.
+
+    Args:
+        k: The number of clusters.
+        kdep_param: The initial threshold value for k=2 clusters.
+          0.05 by default.
+    """
     # Start at some value for k=2, and anneal down as k increases
     if k <= 1: return 0.0 # No merging if k == 1
     T0 = kdep_param
@@ -34,6 +58,42 @@ def k_dependent_smaller_clusters_merging_threshold(k, kdep_param=0.05):
     return T
 def merge_smaller_clusters(img, mask, LI, merge_small_clusters_method=None, small_cluster_merging_kdep_param=0.05,
                            fixed_cluster_size_merging_threshold=0.05, small_cluster_merging_dynamic_k=False, verbose=False):
+    """ Merges clusters with sizes below a specified threshold.
+
+    The function iteratively attempts to merge the smallest cluster until it is no longer
+    below the threshold. The new labels for the cluster are determined by the label of the
+    cluster with the nearest (euclidean) mean pixel value.
+
+    The background label -1 is never merged.
+
+    'merge_small_clusters_method' must be one of the following:
+        "fixed"       - Threshold is the same for each iteration.
+        "k-dependent" - Threshold depends on the number of clusters.
+        None          - No merging is performed (original labels are returned).
+
+    All thresholds below represent a percentage and must be in [0.0, 1.0].
+
+    Args:
+        img: The input image.
+        mask: A binary alpha mask.
+        LI: A 2D array of labels (clusters) for 'img'.
+        merge_small_clusters_method: Optional; The method used to merge the clusters.
+          Must be "fixed", "k-dependent", or None (default).
+        small_cluster_merging_kdep_param: Optional; If 'merge_small_clusters_method' is
+          "k-dependent", this is the initial threshold for k=2 clusters. 0.05 by default.
+        fixed_cluster_size_merging_threshold: Optional; If 'merge_small_clusters_method' is
+          "fixed", this is the fixed threshold used for each iteration. 0.05 by default.
+        small_cluster_merging_dynamic_k: Optional; If True and 'merge_small_clusters_method'
+          is "k-dependent", the threshold will be dynamically updated as clusters are removed
+          each iteration. False by default.
+        verbose: Optional; Print verbosely if True. False by default.
+
+    Returns:
+        A 2D array of the updated labels.
+
+    Raises:
+        ValueError: 'merge_small_clusters_method' is not recognized.
+    """
     LI = np.rint(LI).astype(int)
     labels_list = LI.flatten().tolist()
     c = Counter(labels_list)
@@ -107,9 +167,21 @@ def merge_smaller_clusters(img, mask, LI, merge_small_clusters_method=None, smal
     return currLI
 
 def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
-    """
-    Returns a dictionary of label img and initial image stats
-    This includes a subdictionary of information per label set (cluster)
+    """ Returns a dictionary of 'label_img' and initial image stats.
+
+    Includes a subdictionary of information per label set (cluster).
+
+    Args:
+        img: The input image.
+        mask: The alpha mask of the image.
+        label_img: A 2D array of labels for the image.
+        mean_seg_img: Optional; 'label_img' replaced with the mean cluster value
+          for each label. If set to None (default), the image will be generated
+          in the function.
+        verbose: Optional; Print verbosely if True. False by default.
+    
+    Returns:
+        A dictionary of the image stats.
     """
     if mean_seg_img is None:
         mean_seg_img = color.label2rgb(label_img, image = img, bg_label = -1, 
@@ -159,9 +231,57 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
 def label(image, mask, method, clustering_colour_space='rgb', dbscan_eps=1.0, dbscan_min_neb_size=20, kmeans_k=None,
           kmeans_auto_bounds='2,6', kmeans_auto_crit='davies_bouldin', gc_compactness=10.0, gc_n_segments=300,
           gc_slic_sigma=0.0,verbose=False):
-    """
-    Input: I (M x N x C)
-    Output: Pixelwise labels (M x N), integer
+    """ Segments the image using the specified method.
+
+    The possible methods are:
+
+    graph_cuts    - Spatially unaware segmentation; K-means clustering
+                    followed by a normalized graph cut.
+    affinity_prop - Affinity propagation clustering. Similarity between
+                    two pixels is defined as the negative squared 
+                    euclidean distance.
+    dbscan        - DBSCAN using euclidean distance.
+    optics        - OPTICS using minkowski distance.
+    kmeans        - Mini-batch k-means clustering using batch sizes of 100.
+                    If k is not given, k will be automatically
+                    determined based on a specified scoring function
+                    (see 'kmeans_auto_crit').
+
+    Args:
+        image: The input image.
+        mask: A binary alpha mask.
+        method: The method of segmentation. Must be one of "graph_cuts",
+          "affinity_prop", "dbscan", "optics", or "kmeans".
+        clustering_colour_space: Optional; The colour space in which the
+          clustering is performed. Can be "rgb" (default), "hsv", "cie",
+          or "lab".
+        dbscan_eps: Optional; If the method is "dbscan", this is the
+          maximum distance between two points for one to be considered as
+          in the neighborhood of the other. 1.0 by default.
+        dbscan_min_neb_size: Optional; If the method is "dbscan", this is the
+          number of samples (or total weight) in a neighborhood for a point to
+          be considered as a core point. 20 by default.
+        kmeans_k: Optional; If method is "kmeans", this is the number of clusters.
+          If kmeans_k is None, k will be automatically determined. None by default.
+        kmeans_auto_bounds: Optional; If method is "kmeans", this is a string in
+          the form "X,Y" which represents the search range of k values, [X, Y].
+          "2,6" by default.
+        kmeans_auto_crit: Optional; If method is "kmeans" and k is not fixed,
+          this is the metric used to score the results of the different k values.
+          Can be "silhouette", "davies_bouldin" (default), or "calinski_harabasz".
+        gc_compactness: Optional; If method is "graph_cuts", this is the weight given
+          to space proximity (as opposed to colour proximity). Higher values result in
+          higher superpixel compactness. 10.0 by default.
+        gc_n_segments: Optional; If method is "graph_cuts", this is the approximate
+          number of clusters created during the k-means clustering. 300 by default.
+        gc_slic_sigma: Optional; If method is "graph_cuts", this is the width of the
+          Gaussian smoothing kernel applied to each colour channel. If gc_slic_sigma
+          is 0 (default), no pre-processing is done.
+        verbose: Optional; Print verbosely if True. False by default.
+
+    Returns:
+        A 2D array of integer labels corresponding to the original image. Background pixels
+        are given a label of -1.
     """
     # Convert to desired colour space
     if not clustering_colour_space == 'rgb':
@@ -188,10 +308,46 @@ def label(image, mask, method, clustering_colour_space='rgb', dbscan_eps=1.0, db
                                                             kmeans_auto_crit=kmeans_auto_crit, verbose=verbose)
 
 def cluster_vecs(X, method, dbscan_eps=1.0, dbscan_min_neb_size=20, kmeans_k=None, kmeans_auto_bounds='2,6',
-                 verbose=False, kmeans_auto_crit='davies_bouldin'):
-    """
-    Input: X (S x D, row vector per datum)
-    Output: cluster labels vector (S, integer)
+                 kmeans_auto_crit='davies_bouldin', verbose=False):
+    """ Clusters a vector of pixels using the specified method.
+
+    The possible methods are:
+
+    affinity_prop - Affinity propagation clustering. Similarity between
+                    two pixels is defined as the negative squared 
+                    euclidean distance.
+    dbscan        - DBSCAN using euclidean distance.
+    optics        - OPTICS using minkowski distance.
+    kmeans        - Mini-batch k-means clustering using batch sizes of 100.
+                    If k is not given, k will be automatically
+                    determined based on a specified scoring function
+                    (see 'kmeans_auto_crit').
+
+    Args:
+        X: S X D, row vector per datum.
+        method: A string representing the method. Can be "affinity_prop",
+          "dbscan", "optics", or "kmeans".
+        dbscan_eps: Optional; If the method is "dbscan", this is the
+          maximum distance between two points for one to be considered as
+          in the neighborhood of the other. 1.0 by default.
+        dbscan_min_neb_size: Optional; If the method is "dbscan", this is the
+          number of samples (or total weight) in a neighborhood for a point to
+          be considered as a core point. 20 by default.
+        kmeans_k: Optional; If method is "kmeans", this is the number of clusters.
+          If kmeans_k is None (default), k will be automatically determined.
+        kmeans_auto_bounds: Optional; If method is "kmeans", this is a string in
+          the form "X,Y" which represents the search range of k values, [X, Y].
+          "2,6" by default.
+        kmeans_auto_crit: Optional; If method is "kmeans" and k is not fixed,
+          this is the metric used to score the results of the different k values.
+          Can be one of "silhouette", "davies_bouldin" (default), or "calinski_harabasz".
+        verbose: Optional; Print verbosely if True. False by default.
+    
+    Returns:
+        A vector of labels.
+    
+    Raises:
+        ValueError: method or kmeans_auto_crit is not recognized.
     """
     X = X.astype(float)
     if   method == 'affinity_prop': 
@@ -247,9 +403,37 @@ def cluster_vecs(X, method, dbscan_eps=1.0, dbscan_min_neb_size=20, kmeans_k=Non
 
 def cluster_based_img_seg(image, mask, method, dbscan_eps=1.0, dbscan_min_neb_size=20, kmeans_k=None,
                           kmeans_auto_bounds='2,6', kmeans_auto_crit='davies_bouldin', verbose=False):
-    """
-    Use spatially unaware vector-space clustering for label assignment.
-    BG label: -1
+    """ Performs spatially unaware vector-space clustering for label assignment.
+    
+    See cluster_vecs() for more details.
+
+    Args:
+        image: The input image.
+        mask: A binary alpha mask.
+        method: A string representing the method. Can be "affinity_prop",
+          "dbscan", "optics", or "kmeans".
+        dbscan_eps: Optional; If the method is "dbscan", this is the
+          maximum distance between two points for one to be considered as
+          in the neighborhood of the other. 1.0 by default.
+        dbscan_min_neb_size: Optional; If the method is "dbscan", this is the
+          number of samples (or total weight) in a neighborhood for a point to
+          be considered as a core point. 20 by default.
+        kmeans_k: Optional; If method is "kmeans", this is the number of clusters.
+          If kmeans_k is None (default), k will be automatically determined.
+        kmeans_auto_bounds: Optional; If method is "kmeans", this is a string in
+          the form "X,Y" which represents the search range of k values, [X, Y].
+          "2,6" by default.
+        kmeans_auto_crit: Optional; If method is "kmeans" and k is not fixed,
+          this is the metric used to score the results of the different k values.
+          Can be one of "silhouette", "davies_bouldin" (default), or "calinski_harabasz".
+        verbose: Optional; If True, print verbosely. False by default.
+    
+    Returns:
+        A 2D array of integer labels corresponding to the original image. Background pixels
+        are given a label of -1.
+    
+    Raises:
+        ValueError: method or kmeans_auto_crit is not recognized.
     """
     # Extract colour-based vectors
     # TODO micropatches option
@@ -268,6 +452,15 @@ def cluster_based_img_seg(image, mask, method, dbscan_eps=1.0, dbscan_min_neb_si
 def extract_vecs(image, mask): return image[ mask > 0 ]
 
 def reform_label_image(vec_labels, mask):
+    """ Reforms the image using the image position of the labels.
+
+    Args:
+        vec_labels: A vector of labels.
+        mask: A binary alpha mask.
+
+    Returns:
+        A 2D array of labels.
+    """
     H, W = mask.shape
     # Form a label image (initialize to -2)
     label_image = np.zeros( (H,W) ) - 2
@@ -293,9 +486,14 @@ def reform_label_image(vec_labels, mask):
     return label_image
 
 def vis_label_img(image, labels_img):
-    """
-    Visualization method for clustered/segmented image.
-    Display segmentation, overlaid segmentation, and mean-value segmentation.
+    """ Displays the segmented image.
+
+    Displays the original image, segmentation, overlaid segmentation,
+    and mean-value segmentation.
+
+    Args:
+        image: The input image.
+        labels_img: A 2D array of integer labels.
     """
     # Segmentation
     pure_segs = color.label2rgb(labels_img)
@@ -321,9 +519,23 @@ def vis_label_img(image, labels_img):
     plt.tight_layout()
 
 def transition_matrix(L, normalize, print_M, keep_bg=False, verbose=False):
-    """
-    Input: label image (M x N, integer in [1,K])
-    Output: K x K transition count/probability matrix (M_ij = count(i->j))
+    """ Returns a transition count/probability matrix for 'L'.
+
+    Each entry M_ij corresponds to the number of transitions from cluster i->j
+    in 'L'.
+
+    Args:
+        L: An (M x N) matrix of integer labels in [1,K].
+        normalize: If True, the matrix will be returned with the transition
+          probabilties [0,1] for each entry. Otherwise, the transition counts
+          will be returned.
+        printM: If True, print the matrix before it is returned.
+        keep_bg: Optional; If False, the transition counts from/to the background
+          will be removed from the transition matrix. False by default.
+        verbose: Optional; Print verbosely if True. False by default.
+
+    Returns:
+        A (K x K) transition count/probability matrix.
     """
     H, W = L.shape
     Hpp, Wpp = H + 1, W + 1
@@ -372,7 +584,27 @@ def transition_matrix(L, normalize, print_M, keep_bg=False, verbose=False):
     return M, transition_counters
 
 def segment(image, method, mask, gc_compactness=10.0, gc_n_segments=300, gc_slic_sigma=0.0):
-    """ Spatially aware image segmentation """
+    """ Performs spatially aware image segmentation.
+
+    The image is segmented using k-means clustering followed by a
+    normalized graph cut.
+    
+    Args:
+        image: The input image.
+        mask: A binary alpha mask.
+        gc_compactness: Optional; Weight given to space proximity (as opposed to 
+          colour proximity). Higher values result in higher superpixel compactness.
+          10.0 by default.
+        gc_n_segments: Optional; Approximate number of clusters created
+          during the k-means clustering. 300 by default.
+        gc_slic_sigma: Optional; Width of the Gaussian smoothing kernel applied
+          to each colour channel. If gc_slic_sigma is 0, no pre-processing
+          is done. 0.0 by default.
+
+    Returns:
+        A 2D array of integer labels corresponding to the original image. Background pixels
+        are given a label of -1.
+    """
     #if not (mask is None):
     #    H, W, C = image.shape
     #    image = np.concatenate( (image, mask.reshape(H,W,1)), axis=2)
@@ -388,6 +620,15 @@ def segment(image, method, mask, gc_compactness=10.0, gc_n_segments=300, gc_slic
         return labels2
 
 def gauss_filter(img, blur_sigma):
+    """ Performs Gaussian blurring on 'img' with standard deviation 'sigma'.
+
+    Args:
+        image: The input image.
+        sigma: The standard deviation of Gaussian kernel.
+
+    Returns:
+        The blurred image.
+    """
     assert blur_sigma >= 0.0, "Untenable blur kernel width"
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
