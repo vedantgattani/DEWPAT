@@ -9,7 +9,7 @@ from ..utils import *
 #>> Measure 0: Channel-wise entropy in nats over pixels
 @timing_decorator()
 def discrete_pixelwise_shannon_entropy(img, alpha_mask=None, verbose=False, timing=False):
-    """ Computes the discrete Shannon entropy over individual pixel values across the image.
+    r""" Computes the discrete Shannon entropy over individual pixel values across the image.
 
     This function computes the discrete Shannon entropy of each channel
     and returns the average:
@@ -56,7 +56,7 @@ def discrete_pixelwise_shannon_entropy(img, alpha_mask=None, verbose=False, timi
 @timing_decorator()
 def channelwise_local_entropies(img, alpha_mask=None, show_locent_image=False, local_entropy_disk_size=24,
                                 verbose=False, timing=False):
-    """ Computes the mean discrete Shannon entropy within local image patches.
+    r""" Computes the mean discrete Shannon entropy within local image patches.
 
     The shape of each patch is defined by a disk with radius 'local_entropy_disk_size'.
     The discrete Shannon entropy is computed for each patch and the average is returned:
@@ -106,7 +106,7 @@ def channelwise_local_entropies(img, alpha_mask=None, show_locent_image=False, l
 # incur different frequency effects than on a black bg). 
 @timing_decorator()
 def mean_weighted_fourier_coef(img, show_fourier_image=False, verbose=False, timing=False):
-    """ Computes the frequency-weighted average of the Fourier coefficient values.
+    r""" Computes the frequency-weighted average of the Fourier coefficient values.
 
     The Fourier coefficients are weighted by the Manhattan distance from the center
     of the image, which is proportional to frequency:
@@ -171,7 +171,7 @@ def mean_weighted_fourier_coef(img, show_fourier_image=False, verbose=False, tim
 @timing_decorator()
 def local_patch_covariance(img, alpha_mask=None, local_patch_size=20, local_covar_wstep=5, show_loccov_image=False,
                            verbose=False, timing=False):
-    """ Estimates the mean local intra-patch covariance over the image.
+    r""" Estimates the mean local intra-patch covariance over the image.
 
     \frac{1}{|P|} \sum_{p\in P} \log\left( \det\left(\widehat{C}(p)\right) + 1 \right)
 
@@ -245,7 +245,7 @@ def local_patch_covariance(img, alpha_mask=None, local_patch_size=20, local_cova
 # Note: even if we mask the gradient image, the gradient on the boundary will still be high
 @timing_decorator()
 def avg_gradient_norm(img, alpha_mask=None, use_gradient_image=False, show_gradient_img=False, verbose=False, timing=False):
-    """ Computes the mean value of the per-channel gradient magnitude over the image.
+    r""" Computes the mean value of the per-channel gradient magnitude over the image.
 
     The L2-norm of the directional derivative for each pixel is computed
     and the average is returned:
@@ -291,7 +291,7 @@ def avg_gradient_norm(img, alpha_mask=None, use_gradient_image=False, show_gradi
 #>> Measure 5: Continuous-space Differential Shannon entropy across pixels
 @timing_decorator()
 def cont_pixelwise_diff_ent(img, alpha_mask=None, transform_diff_ent=False, affine_param=150, verbose=False, timing=False):
-    """ Estimates the continuous-space differential Shannon entropy across pixels.
+    r""" Estimates the continuous-space differential Shannon entropy across pixels.
 
     -\int_V p(v) \log p(v)\, dv
 
@@ -342,7 +342,7 @@ def cont_pixelwise_diff_ent(img, alpha_mask=None, transform_diff_ent=False, affi
 @timing_decorator()
 def patchwise_diff_ent(img, alpha_mask=None, diff_ent_patch_size=3, diff_ent_window_step=2, max_patches_cont_DE=10000,
                        affine_param=150, transform_diff_ent=False, verbose=False, timing=False):
-    """ Estimates the differential entropy of the distribution of patches over the image.
+    r""" Estimates the differential entropy of the distribution of patches over the image.
 
     Similar to cont_pixelwise_diff_ent() but with patches instead of pixels:
     
@@ -419,7 +419,7 @@ def patchwise_diff_ent(img, alpha_mask=None, diff_ent_patch_size=3, diff_ent_win
 def patchwise_global_covar(img, alpha_mask=None, global_cov_window_size=10, global_cov_window_step=2,
                            global_cov_norm_img=False, global_cov_aff_trans=False,
                            global_cov_affine_prm=100, verbose=False, timing=False):
-    """ Computes the log-determinant of the global covariance matrix over patches in the image.
+    r""" Computes the log-determinant of the global covariance matrix over patches in the image.
 
     \log\left( \det\left( \widehat{C}(P) \right) \right)
 
@@ -492,7 +492,7 @@ def patchwise_global_covar(img, alpha_mask=None, global_cov_window_size=10, glob
 def pairwise_wasserstein_distance(img, alpha_mask=None, image_rescaling_factor=1.0, emd_window_size=24,
         emd_window_step=16, coordinate_aware=False, coordinate_scale=0.2, metric='sqeuclidean', 
         use_sinkhorn=True, sinkhorn_gamma=0.25, emd_visualize=True, verbose=False, timing=False):
-    """ Computes the average Wasserstein distance between image patches.
+    r""" Computes the average Wasserstein distance between image patches.
 
     \frac{1}{|P_C|^2} \sum_{p_c\in P_C}\sum_{q_c\in P_C} \mathcal{W}_\rho(p_c,q_c)
 
@@ -638,7 +638,7 @@ def pairwise_wasserstein_distance(img, alpha_mask=None, image_rescaling_factor=1
 # Measure 9: mean-matching pairwise distances
 @timing_decorator()
 def patchwise_mean_dist(img, mask, pw_mnt_dist_nonOL_WS=[3,4], show_pw_mnt_ptchs=False, verbose=False, timing=False):
-    """ Computes the average pairwise distance between the first moments (mean) of patches across the image.
+    r""" Computes the average pairwise distance between the first moments (mean) of patches across the image.
 
     \frac{1}{|C|\,|P|^2} \sum_{p_i,p_j\in P} || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2
 
@@ -679,7 +679,7 @@ def patchwise_mean_dist(img, mask, pw_mnt_dist_nonOL_WS=[3,4], show_pw_mnt_ptchs
 @timing_decorator()
 def patchwise_moment_dist(img, mask, pw_mnt_dist_nonOL_WS=[3,4], show_pw_mnt_ptchs=False, gamma_mu_weight=1.0, 
                           gamma_cov_weight=1.0, verbose=False, timing=False):
-    """ Computes the average pairwise distance between the first and second moments of patches across the image.
+    r""" Computes the average pairwise distance between the first and second moments of patches across the image.
 
     Similar to patchwise_mean_dist() but includes the second moment (covariance):
 
@@ -706,7 +706,7 @@ def patchwise_moment_dist(img, mask, pw_mnt_dist_nonOL_WS=[3,4], show_pw_mnt_ptc
         pw_mnt_dist_nonOL_WS: Optional; A list [x, y] where x and y are the 
           number of horizontal and vertical cuts respectively. If the height
           or width of 'img' is not a multiple of x or y, the image is shaved
-          from the bottom and/or left.
+          from the bottom and/or left. [3,4] by default.
         show_pw_mnt_ptchs: Optional; If True, the image and mask patches will
           be displayed. False by default.
         gamma_mu_weight: Optional; The weight given to the first moment (mean).
@@ -735,7 +735,7 @@ def patchwise_moment_dist(img, mask, pw_mnt_dist_nonOL_WS=[3,4], show_pw_mnt_ptc
 #   mean-matching term, similar to Abou-Moustafa and Ferrie, 2012.
 @timing_decorator()
 def patchwise_moment_dist_c(img, mask, mode, pw_mnt_dist_nonOL_WS=[3,4], show_pw_mnt_ptchs=False, verbose=False, timing=False):
-    """ Compute the distributional divergences between patches, based on an underlying Gaussian prior assumption.
+    r""" Compute the distributional divergences between patches, based on an underlying Gaussian prior assumption.
 
     \frac{1}{|P|^2} \sum_{p_i,p_j\in P} D(p_i, p_j)
 
