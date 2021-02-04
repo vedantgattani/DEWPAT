@@ -12,8 +12,23 @@ from .prob import gaussian_prob_divergence
 
 # Helper function for displays
 def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax=None):
-    """
-    mask - zeros = masked (NaNs), ones = original values
+    """ Displays the input image 'inim'.
+
+    Args:
+        inim: The input image.
+        title: The title of the plot.
+        colorbar: Optional; Add a colorbar to the plot if True.
+          False by default.
+        cmap: Optional; The colormap used to map scalar values to
+          3D pixel values. Only used if 'inim' is a greyscale image.
+          Can be a matplotlib.colors.ColorMap instance or the name of
+          a color map. None by default.
+          See https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+        mask: Optional; The binary alpha mask of the image.
+        vmin: Optional; The minimum scalar value covered by colormap 'cmap'.
+          None by default.
+        vmax: Optional; The maximum scalar value covered by colormap 'cmap'.
+          None by default.
     """
     fig, ax = plt.subplots()
     if (not mask is None) and (not type(mask) is bool):
@@ -30,6 +45,27 @@ def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax
     if colorbar: fig.colorbar(imm)
 
 def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None, hide_axes=False):
+    """ Displays a set of patches on the same plot.
+
+    The number of patches in 'patches' must be equal to
+    'nrows' * 'ncols'.
+
+    Args:
+        patches: An array of N patches.
+        nrows: The number of rows.
+        ncols: The number of columns.
+        show: Optional; Immediately displays the plot with a
+          if True. If set to False (default), the plot can be
+          displayed after the function ends with a call to 
+          matplotlib.pyplot.show(). 
+        title: Optional; The title of the window displaying
+          the patches. None by default.
+        subtitles: Optional; An array of N strings used to
+          label the patches. If set to None (default), the patches
+          will be labelled with its row and column number on the plot.
+        hide_axes: Optional; Displays the axes labels on each
+          patch if True. False by default.
+    """
     # patches must be n_patches x H x W x C
     N = nrows * ncols
     N_dims = len(patches.shape)
@@ -63,8 +99,7 @@ def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None,
     if show: plt.show()
 
 def histogram3dplot(h, e, fig=None, verbose=True):
-    """
-    Visualize a 3D histogram
+    """ Visualize a 3D histogram
 
     Adapted from:
         https://staff.fnwi.uva.nl/r.vandenboomgaard/IPCV20162017/LectureNotes/IP/Images/ImageHistograms.html
@@ -72,6 +107,12 @@ def histogram3dplot(h, e, fig=None, verbose=True):
     Args:
         h: histogram array of shape (M, N, O)
         e: list of bin edge arrays (for R, G and B)
+        fig: Optional; A matplotlib.pyplot.figure
+          instance to display the plot. If None (default),
+          the current figure (or a new figure if one does
+          not exist) will be used.
+        verbose: Optional; Print verbosely if True. True
+          by default.
     """
     M, N, O = h.shape
     idxR = np.arange(M)
@@ -126,6 +167,30 @@ def histogram3dplot(h, e, fig=None, verbose=True):
 ### Patch extraction helpers ###
 
 def patches_over_channels(img, patch_size, window_step, return_meta=True, floatify=False):
+    """ Generates square patches from a 3-channel image.
+
+    The patches will be overlapping if 'window_step' is smaller than
+    any of the 'patch_size' dimensions.
+
+    Args:
+        img: A 3-channel image.
+        patch_size: The length of the square patch in pixels.
+        window_step: The step size in pixels between adjacent patches.
+        return_meta: Optional; If True, return meta data in addition to
+          the patches (see below).
+        floatify: Optional; If True, patches will be returned in floating
+          point format.
+        
+    Returns:
+        An array of length 3 (one per channel) where each element is a matrix
+        of 2D patches for the corresponding greyscale image.
+        
+        If 'return_meta' is True, also return:
+          - The shape of the array (3, H, W, Px, Py) where, H is the number
+              of vertical patches, W is the number of horizontal patches, and Px x Py
+              is the dimensions of the square patch.
+          - The area of a patch (Px x Py).
+    """
     # C x H x W x Px x Py = num_channels x n_patches_vert x n_patches_horz x patch_H x patch_W
     if floatify:
         with warnings.catch_warnings():
@@ -139,6 +204,21 @@ def patches_over_channels(img, patch_size, window_step, return_meta=True, floati
     return P
 
 def patches_per_channel(channel, patch_size, window_step):
+    """ Generates square patches from a greyscale image.
+
+    The patches will be overlapping if 'window_step' is smaller than
+    any of the 'patch_size' dimensions.
+
+    Args:
+        channel: A greyscale image.
+        patch_size: The length of the square patch size in
+          pixels.
+        window_step: The step size in pixels between adjacent patches.
+
+    Returns:
+        An H x W matrix of 2D patches where H is the number of vertical
+        patches and W is the number of horizontal patches.
+    """
     # H x W x Px x Py = n_patches_vert x n_patches_horz x patch_H x patch_W
     return view_as_windows(
                 np.ascontiguousarray( channel ),
@@ -146,18 +226,77 @@ def patches_per_channel(channel, patch_size, window_step):
                 step=window_step)
 
 def vectorize_single_masked_patch(patches, mask, i, j, wt):
+    """ Vertorize patch from 'patches' at row 'i' and column 'j'.
+
+    None is returned if any pixel in the corresponding mask
+    contains a 0.
+
+    Args:
+        patches: An array of patches (see patches_over_channels).
+        mask: A matrix of patches corresponding to the alpha masks
+          of 'patches'.
+        i: The vertical index of the patch.
+        j: The horizontal index of the patch.
+        wt: The area of the patch.
+    
+    Returns:
+        A ('wt' x 3) length vector of the patch values. If any
+        pixel in the patch's mask is 0, None is returned instead.
+    """
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
     unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
     return unfolded_patch
 
 def vectorize_single_masked_patch_as_list(patches, mask, i, j, wt):
+    """ Vertorize patch from 'patches' at row 'i' and column 'j'.
+
+    None is returned if any pixel in the corresponding mask
+    contains a 0.
+
+    Args:
+        patches: An array of patches (see patches_over_channels).
+        mask: A matrix of patches corresponding to the alpha masks
+          of 'patches'.
+        i: The vertical index of the patch.
+        j: The horizontal index of the patch.
+        wt: The area of the patch.
+    
+    Returns:
+        A 'wt'-vector of 3D pixels from the patch. If any pixel in
+        the patch's mask is 0, None is returned instead.
+    """
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
     listified_patch = patches[:,i,j,:,:].reshape(3, wt).T
     return listified_patch
 
 def vectorize_masked_patches(patches, mask, H, W, as_list=False, flatten=True, remove_none=True):
+    """ Vectorizes patches in 'patches'.
+
+    Patches with a mask containing a 0 will appear as None in the
+    result unless 'remove_none' is True.
+
+    Args:
+        patches: An array of patches (see patches_over_channels).
+        mask: A 2D matrix of patches corresponding to the
+          alpha masks of 'patches'.
+        H: The number of vertical patches in 'patches'.
+        W: The number of horizontal patches in 'patches'.
+        as_list: Optional; If True, the vector will contain RGB
+          pixels from the patches. Otherwise, the pixels will be
+          flattened in the vector. False by default.
+        flatten: Optional; If True (default), the return value will
+          be a list of patches of length H x W. Otherwise, the
+          return value will be an H x W matrix of patches.
+        remove_none: Optional; If True (default), patches with masked
+          pixels (which appear as None) will be removed from the return
+          value. Note that the result will be a 1D list of vectors even
+          if flatten is False.
+
+    Returns:
+        A list/matrix of patch vectors.
+    """
     wt = mask.shape[2] * mask.shape[3] # patch/window total size
     if flatten:
         if as_list:
@@ -181,11 +320,20 @@ def vectorize_masked_patches(patches, mask, H, W, as_list=False, flatten=True, r
 ### Image processing helpers ###
 
 def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
-    '''
-    Generates the per-channel L2 gradient magnitude image of the input `img`.
-    Each edge pixel value is divided by `divider` (enforce output in [0,1] + numerical stability).
-    If `to_ubyte` is specified True, the output is converted to the ubyte numpy dtype.
-    '''
+    """ Generates the per-channel L2 gradient magnitude image of the input `img`.
+
+    The gradient is estimated using the Scharr transform.
+
+    Args:
+        img: The input image.
+        divider: Optional; Each edge pixel value is divided by `divider` (enforce
+          output in [0,1] + numerical stability). 2 by default.
+        to_ubyte: Optional; If True, the output is converted to the ubyte numpy dtype.
+          False by default.
+
+    Returns:
+        The gradient magnitude image.
+    """
     @adapt_rgb(each_channel)
     def cgrad_x(img):
         return filters.scharr_v(img)
@@ -203,12 +351,28 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
     return gradient_img
 
 def gaussian_blur(image, sigma):
-    '''
-    Performs Gaussian blurring on the input with standard deviation sigma.
-    '''
+    """ Performs Gaussian blurring on 'image' with standard deviation 'sigma'.
+
+    Args:
+        image: The input image.
+        sigma: The standard deviation of Gaussian kernel.
+
+    Returns:
+        The blurred image.
+    """
     return np.clip(filters.gaussian(image, sigma=sigma, multichannel=True), 0.0, 1.0)
 
 def to_perceptual_greyscale(img):
+    """ Performs perceptual luminance-preserving RGB to greyscale conversion.
+
+    The result is in ubyte format (pixel values in [0, 255]).
+
+    Args:
+        img: The RGB image.
+    
+    Returns:
+        The greyscale image.
+    """
     from skimage.color import rgb2gray
     new_img = dupe_channel( rgb2gray(img) )
     with warnings.catch_warnings():
@@ -217,6 +381,16 @@ def to_perceptual_greyscale(img):
     return new_img
 
 def to_avg_greyscale(img):
+    """ Converts an image to greyscale by averaging the channel pixel values.
+
+    The result is in ubyte format (pixel values in [0, 255]).
+
+    Args:
+        img: The RGB image.
+    
+    Returns:
+        The greyscale image.
+    """
     new_img = dupe_channel( np.clip(np.mean(img / 255, axis=-1), 0, 1) )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -224,6 +398,16 @@ def to_avg_greyscale(img):
     return new_img
 
 def conv_to_ubyte(img):
+    """ Converts an image to unsigned byte format [0, 255].
+
+    See skimage.img_as_ubyte().
+
+    Args:
+        img: The RGB image.
+    
+    Returns:
+        The ubyte image.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         img = skimage.img_as_ubyte( img )
@@ -234,6 +418,8 @@ def conv_to_ubyte(img):
 # Note: calling this as a decorator actually runs it, so that
 # replacer is the actual decorator used.
 def timing_decorator():
+    """ A decorator that returns the timing of the wrapped function.
+    """
     def decorator(wrapped_func):
         def replacement(*args, **kwargs):
             start = timer()
@@ -248,19 +434,42 @@ def timing_decorator():
 ### Array Helpers ###
 
 def dupe_channel(c):
+    """ Duplicates a single channel to form a 3-channel image.
+
+    Args:
+        c: A greyscale image.
+    
+    Returns:
+        A 3-channel image.
+    """
     return combine_channels([c, c, c])
 
 def combine_channels(channels):
+    """ Combines channels into a multi-channel image.
+
+    Args:
+        channels: A list of greyscale images.
+    
+    Returns:
+        A multi-channel image.
+    """
     return np.stack( channels, axis = -1 )
 
 ### Colour Helpers ###
 
 def color_multiinterpolator(color_list, times=None):
-    '''
-    Produces a color function f : [0,1] -> R^3 that linearly interpolates over color_list.
-    Color_list contains a list of color arrays, with length n.
-    times, if given, must be of length n-2 and each entry has 0 < t_i < 1
-    '''
+    """ Produces a color function f : [0,1] -> R^3 that linearly interpolates over 'color_list'.
+
+    Args:
+        color_list: A list of color arrays, with length n.
+        times: Optional; Provides a mapping of values to the corresponding colors in 'color_list'.
+            Must be of length n-2 and each entry has 0 < t_i < 1 (the first and last colors are 
+            mapped to by 0 and 1 respectively). If set to None (default), the colors are equidistantly
+            mapped from [0, 1] to the colors in 'color_list'.
+
+    Returns:
+        A matplotlib.colors.LinearSegmentedColormap instance.
+    """
     n = len(color_list)
     if n == 2: return Color.color_biinterpolator(color_list[0], color_list[1])
     if times is None: times = np.linspace(0.0, 1.0, num=n)[1:-1]
@@ -279,13 +488,46 @@ def from_ints(r,g,b):
     return np.array([r, g, b, 255]) / 255.0
 
 
-def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None, verbose=True,
-                                        manifold_learning_options={}, colors=None):
-    '''
-    Given a set of n-dimensional vectors, dimensionally reduce the set to 2D and plot it.
-    i.e. V is an m x n matrix.
-    We can color based on the point labels if given. Must be a list of
-    '''
+def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', manifold_learning_options={},
+                                        point_labels=None, colors=None, verbose=True):
+    """ Dimensionally reduces a set of n-dimensional vectors to 2D.
+
+    The reduced vectors are plotted. If 'point_labels' is provided, 'colors' is ignored.
+
+    Args:
+        vectors: An m x n matrix.
+        method: optional; The method used to reduce the vectors. Must be
+          one of the following:
+            'pca'     - Principal Component Analysis (default)
+            'tsne'    - t-distributed Stochastic Neighbor Embedding
+            'isomap'  - Isomap Embedding
+            'lle'     - Locally Linear Embedding
+        manifold_learning_options: optional; A dict containing learning
+            options. The options allowed depend on the method used:
+            'pca'     - 'whiten'             Perform PCA Whitening if True. False by
+                                             default
+            'tsne'    - 'learning_rate'      The learning rate. Recommended to be
+                                             in the range [10, 1000]. 200.0 by default.
+                      - 'perplexity'         An estimate of the number of close
+                                             neighbors around each point. Recommended
+                                             to be in the range [5, 50]. 30.0 by default.
+                      - 'early_exaggeration' Controls how tight natural clusters in the original
+                                             space are in the embedded space and how much space 
+                                             will be between them. 12.0 by default.
+            'isomap'  - 'n_neighbors'        The number of neighbors to consider for each point.
+                                             5 by default.
+            'lle'     - 'n_neighbors'        The number of neighbors to consider for each point.
+                                             5 by default.
+        point_labels: optional; A list of m ints/floats used to color the points on the plot.
+          The labels are mapped onto the pyplot.cm.jet colormap. Can only be used if m <= 256.
+          None by default.
+        colors: optional; A m x 3 or m x 4 matrix of RGB/RGBA pixels used to color the points
+          on the plot. None by default.
+        verbose: optional; Print verbosely if True. True by default.
+
+    Returns:
+        An m x 2 matrix of the reduced vectors.
+    """
     method = method.lower()
     methods = ['pca', 'tsne', 'isomap', 'lle']
     assert method in methods, 'Method must be one of' + str(methods)
@@ -352,7 +594,7 @@ def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None
         cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
         # Define the bins and normalize
         bounds = np.linspace(0, N, N + 1)
-        norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+        norm = matplotlib.colors.BoundaryNorm(bounds, cmap.N)
         # Create figure
         splot = a.scatter(x, y,
                           c=point_labels,
@@ -369,7 +611,30 @@ def plotDimensionallyReducedVectorsIn2D(vectors, method='pca', point_labels=None
 
 ### IO ###
 
-def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_channels=True):
+def load_helper(image_path, blur_sigma=None, apply_alpha_to_rgb_channels=True, verbose=True):
+    """ Read the image at the specified file path.
+
+    Args:
+        image_path: The path of the image.
+        blur_sigma: Optional; The standard deviation of the Gaussian
+          kernel used to blur the image. Must be >= 0. Set to None
+          (default) to skip this step.
+        apply_alpha_to_rgb_channels: Optional; If True, any pixel with
+          an alpha value <= 128 will be removed from the RGB vectors in
+          the return value.
+        verbose: Optional; Print verbosely if True. True by default.
+
+    Returns:
+        A tuple containing:
+            1) The image object (H x W x 3)
+            2) A vector of red pixel values from the image
+            3) A vector of green pixel values from the image
+            4) A vector of blue pixel values from the image
+            5) A binary alpha mask (H x W) containing 1 for each
+               pixel with an alpha value > 128 and 0 otherwise.
+               If the image has no alpha channel, None is returned
+               instead.
+    """
     img = io.imread(image_path)
     if not blur_sigma is None:
         assert blur_sigma >= 0.0, "Untenable blur kernel width"
@@ -405,9 +670,42 @@ def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_ch
 ### Block extraction and pairwise moment comparison methods ###
 
 def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_weight, display_intermeds, verbose, mode='central'):
-    """
-    Divides the input img into non-overlapping blocks.
+    """ Computes the pairwise moment distance between non-overlapping patches.
+
+    The input image is divided into non-overlapping patches. The measure
+    depends on the mode selected (see below).
     Note: if a patch is *entirely* masked, it is removed from consideration.
+
+    Args:
+        img: The input image.
+        mask: The alpha mask of the image.
+        block_cuts: A list [x, y] representing the height and width
+          of the patches. If the height or width of 'img' is not a
+          multiple of x or y, the image is shaved from the bottom
+          and/or left.
+        gamma_mu_weight: The weight given to the mean distance
+          between patches. If 'mode' is not 'central' this must be
+          set to None.
+        gamma_cov_weight: The weight given to the covariance distance
+          between patches. If 'mode' is not 'Central' this must be
+          set to None.
+        display_intermeds: If True, the image and mask patches will
+          be displayed.
+        verbose: If True, print verbosely.
+        mode: Optional; Must be one of the following options:
+
+          [ 'central', 'pw_symmetric_KL',
+            'pw_W2', 'pw_Hellinger',
+            'pw_bhattacharyya', 'pw_FMATF' ]
+
+            The default mode 'central' considers the first (mean) and
+            second (covariance) moments across patches. The remaining
+            modes compute the distributional divergences between patches,
+            based on an underlying Gaussian prior assumption, using the
+            specified method.
+    
+    Returns:
+        The mean pairwise moment distance.
 
     TODO: options for other matrix norms in central moment distance.
     """
@@ -505,8 +803,26 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     return complexity
 
 def blockify(img, mask, block_cuts, verbose):
-    """
-    Note: this method shaves off some rows/columns to get the block size to fit.
+    """ Separates the image and its alpha mask into non-overlapping blocks.
+
+    If the width and/or height of the image is not a multiple of 
+    'block_cuts', the image is shaved from the left and/or bottom.
+
+    Args:
+        img: The input image.
+        mask: The alpha mask of the image.
+        block_cuts: A list [x, y] where x and y are the number of horizontal
+          and vertical cuts respectively. If the height or width of 'img' is
+          not a multiple of x or y, the image is shaved from the bottom and/or
+          left. [3,4] by default.
+        verbose: Print verbosely if True.
+
+    Returns:
+        A tuple containing:
+            1) A 2D matrix of the blocks for the image.
+            2) A 2D matrix of the blocks for the alpha mask.
+
+        Each matrix has a height of 'block_cuts[0]' and width of 'block_cuts[1]'.
     """
     if verbose: print('img, mask, block_cuts shapes:', img.shape, mask.shape, block_cuts)
     N_divs_h, N_divs_w = block_cuts
@@ -528,6 +844,18 @@ def blockify(img, mask, block_cuts, verbose):
     return img_blocks, mask_blocks
 
 def channelwise_extract_blocks(I, block_shape):
+    """ Separates the image into non-overlapping blocks.
+
+    The image 'I' must be a multiple of 'block_shape'.
+
+    Args:
+        I: The input image.
+        block_shape: A list [x, y] representing the shape of each block.
+          The height and width of 'I' must be divisible by x and y respectively.
+
+    Returns:
+        A 2D matrix of blocks for the image.
+    """
     Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape)
            for i in range(3) ]
     return np.stack(Cs, axis=-1) # NB_h x NB_w x HB x WB x C
@@ -535,11 +863,36 @@ def channelwise_extract_blocks(I, block_shape):
 #
 
 def read_csv_full(path):
+    """ Reads a csv file.
+
+    The csv file must be delimited by ','.
+    Note that the header will be included in the result.
+
+    Args:
+        path: The path to the csv file to read.
+
+    Returns:
+        A list of rows in the csv file where each row
+        is a list of entries in the csv file.
+    """
     with open(path) as csvfile:
         readCSV = csv.reader(csvfile, delimiter=',')
         return [ row for row in readCSV ]
 
 def get_row_via(targ_list, search_term, index):
+    """ Gets the index where 'search_term' appears in row 'index'.
+
+    'targ_list' represents a csv file.
+
+    Args:
+        targ_list: A 2D list representing a csv file.
+          See read_csv_full().
+        search_term: The value being searched for.
+        index: The row of the csv file to search.
+    
+    Returns:
+        The index (column) where 'search_term' appears or None.
+    """
     for j, targ in enumerate(targ_list):
         if targ[index] == search_term:
             return j
@@ -549,6 +902,13 @@ def get_row_via(targ_list, search_term, index):
 #
 
 class Formatter(object):
+    """ An object used to prettyprint Python objects.
+
+    Methods are defined for dict, list, and tuple which recursively
+    call each other based on the objects contained in them. This
+    bottoms out when an object that is not a dict, list, or tuple is
+    seen; in this case, the object's __repr__ method is used.
+    """
     def __init__(self):
         self.types = {}
         self.htchar = '   '
