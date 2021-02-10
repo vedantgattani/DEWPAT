@@ -16,7 +16,7 @@ Activate environment: `source activate imcom` or `conda activate imcom`.
 
 ## Usage
 
-Simply run `python img_complexity.py <input>`, where `<input>` can be a folder of images or a single image.
+Simply run `python img_complexity.py <input>`, where `<input>` can be a folder of images or a single image. 
 
 Run `python img_complexity.py --help` to print detailed usage help from the script.
 
@@ -34,8 +34,8 @@ Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute 
 
 #### Alpha Channel Masking
 
-Most measures are able to account for the presence of an alpha channel mask.
-For instance, in the patch-based estimators, any patch with a masked pixel is ignored.
+Most measures are able to account for the presence of an alpha channel mask, allowing you to run the measures on a ROI rather than the entire image. A simple way to include an alpha mask is to remove the background beforehand (i.e., using photoshop), and then save the image as a .png. As a rule of thumb, png images always have an alpha color channel (this is why png images can have transparent backgrounds).
+In the patch-based estimators, any patch with a masked pixel is ignored. 
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
 #### Preprocessing
