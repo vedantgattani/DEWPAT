@@ -282,7 +282,14 @@ def compute_complexities(impath,    # Path to input image file
     _oneparam_affine = lambda x, affp: (x + affp) / affp
     # Read original image
     if verbose: print('Reading image:', impath)
-    img = skimage.io.imread(impath)
+    # Check if color image or image stack
+    # ADD THIS AS ARGS
+    is_color = True
+    if is_color:
+        img,img_mask = load_image(impath)
+    else:
+        img,img_mask = convert_im_stack(impath)
+        
     n_channels = img.shape[2]
     
     # Downscale image, if desired
@@ -296,47 +303,44 @@ def compute_complexities(impath,    # Path to input image file
                 anti_aliasing=True, multichannel=True)
         img = conv_to_ubyte(img)
         if verbose: print("Resized dims:", img.shape)
-        if n_channels == 4:
-            alpha_layer = img[:,:,3]
-            if False: # Display 
+        if (img_mask is not None):
+            img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main, 
+                anti_aliasing=True, multichannel=True)
+            alpha_layer = conv_to_ubyte(img_mask)            
+            alpha_layer[ alpha_layer > 128] = 255
+            alpha_layer[ alpha_layer <= 128] = 0
+            if False:
                 imdisplay(alpha_layer, 'alpha_layer', colorbar=True, cmap='plasma')
-                imdisplay(img[:,:,0:3], 'layers', colorbar=True, cmap='plasma')
+                imdisplay(img, 'layers', colorbar=True, cmap='plasma')
                 plt.show()
-            alpha_layer[ alpha_layer >  128 ] = 255
-            alpha_layer[ alpha_layer <= 128 ] = 0
-    
+                   
     # Handle alpha transparency
-    alpha_channel = img[:,:,3] if n_channels == 4 else None
-    using_alpha_mask = not (alpha_channel is None)
+    
+    using_alpha_mask = not (img_mask is None)
     if using_alpha_mask:
-        img = img[:,:,0:3]
-        alpha_mask = np.copy(alpha_channel).astype(int)
-        alpha_mask[ alpha_mask <= 0 ] = 0
-        alpha_mask[ alpha_mask  > 0 ] = 1
         if False: # Display mask
-            imdisplay(alpha_mask, 'alpha_mask', colorbar=True, cmap='plasma')
+            imdisplay(img_mask, 'alpha_mask', colorbar=True, cmap='plasma')
             plt.show()
-    else:
-        alpha_mask = None
 
     # Ignore the alpha channel, if desired
     if args.ignore_alpha:
         using_alpha_mask = False
-        alpha_mask, alpha_channel = None, None
-    
+        img_mask = None
+   
     # Convert image to greyscale, if desired
-    is_scalar = False
-    gs_type = args.greyscale.lower()
-    assert gs_type in ["none", "human", "avg"], 'Use one of --greyscale none/avg/human'
-    if gs_type == 'human':
-        if verbose: print("Greyscaling image (perceptual)")
-        img = to_perceptual_greyscale(img)
-        is_scalar = True
-    elif gs_type == 'avg':
-        if verbose: print("Greyscaling image (channel mean)")
-        img = to_avg_greyscale(img)
-        is_scalar = True
-
+    if (is_color):
+        is_scalar = False
+        gs_type = args.greyscale.lower()
+        assert gs_type in ["none", "human", "avg"], 'Use one of --greyscale none/avg/human'
+        if gs_type == 'human':
+            if verbose: print("Greyscaling image (perceptual)")
+            img = to_perceptual_greyscale(img)
+            is_scalar = True
+        elif gs_type == 'avg':
+            if verbose: print("Greyscaling image (channel mean)")
+            img = to_avg_greyscale(img)
+            is_scalar = True
+        
     # Blur image, if desired
     blur_sigma = args.blur
     assert blur_sigma >= 0.0, "Untenable blur kernel width"
@@ -355,13 +359,13 @@ def compute_complexities(impath,    # Path to input image file
     
     # Perform masking directly on the image (to destroy details hidden behind the alpha channel)
     if using_alpha_mask and not args.ignore_alpha:
-        img[ alpha_mask <= 0 ] = 0
+        img[ img_mask <= 0 ] = 0
     if display_image: imdisplay(img, 'Image')
     if verbose:
         print('Image Shape:', img.shape)
         print('Channelwise Min/Max')
-        for i in range(3):
-            print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))
+        for i in range(n_channels):
+            print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))  
     
     # Image dimensions and center
     h, w = img.shape[0:2]
@@ -375,6 +379,8 @@ def compute_complexities(impath,    # Path to input image file
         complexities.append(val)
         computed_names.append(S_all[ind])
 
+    # STOPPED HERE
+    alpha_mask = img_mask
     #####################################
     ### Computing complexity measures ###
     #####################################

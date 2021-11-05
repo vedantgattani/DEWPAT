@@ -8,6 +8,8 @@ from mpl_toolkits.mplot3d import Axes3D, axes3d
 from skimage import io
 from prob import gaussian_prob_divergence
 
+import glob
+
 ### Visualization helpers ###
 
 # Helper function for displays
@@ -186,13 +188,12 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
     Each edge pixel value is divided by `divider` (enforce output in [0,1] + numerical stability).
     If `to_ubyte` is specified True, the output is converted to the ubyte numpy dtype.
     '''
-    @adapt_rgb(each_channel)
-    def cgrad_x(img):
-        return filters.scharr_v(img)
-    @adapt_rgb(each_channel)
-    def cgrad_y(img):
-        return filters.scharr_h(img)
-    Ig_x, Ig_y = cgrad_x(img), cgrad_y(img)
+    Ig_x = np.zeros(img.shape)
+    Ig_y = np.zeros(img.shape)
+    for k in range(img.shape[2]):
+        Ig_x[:,:,k] = filters.scharr_v(img[:,:,k])
+        Ig_y[:,:,k] = filters.scharr_h(img[:,:,k])
+    
     Ig_x_sq, Ig_y_sq = Ig_x * Ig_x, Ig_y * Ig_y
     gradient_img = np.sqrt(Ig_x_sq + Ig_y_sq) / divider # to remain in [0,1]
     # print('GradImg min/max: %.2f/%.2f' % (gradient_img.min(), gradient_img.max()))
@@ -402,6 +403,57 @@ def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_ch
     # At this point, img is always H X W x 3; mask is either None or H x W (boolean/byte)
     # R, G, and B are vectors; img is ubyte type.
     return img, R, G, B, orig_mask
+
+def load_image(im_path):
+    
+    nChannels = 0
+    image = io.imread(im_path)
+    
+    nChannels = image.shape[2]
+    
+    if (nChannels == 4):
+        im_mask = image[:,:,-1]
+        im_mask = np.copy(im_mask).astype(int)
+        im_mask[ im_mask <= 0 ] = 0
+        im_mask[ im_mask  > 0 ] = 1
+        
+        image = image[:,:,0:3]
+    else:
+        im_mask = None    
+    
+    return image, im_mask
+
+def convert_im_stack(im_path):
+    # Accepts directory + image  name without suffix and returns a ndarray where each slice of depth corresponds to 1 multispectral image.
+    # Returns a mask if any of the relevant images in directory have alpha channel (e.g. png images).
+    
+    nChannels = 0
+    mask_found = 0
+    
+    for im_file in glob.glob(im_path+"*"):
+        image = io.imread(im_file)
+        if (nChannels == 0):
+            im_stack = image[:,:,0]
+            im_mask = None
+        else:
+            im_stack = np.dstack((im_stack,image[:,:,0]))
+            
+        nChannels += 1
+        
+        if ((mask_found == 0) and (image.shape[2] > 3)):
+            im_mask = image[:,:,-1]
+            im_mask = np.copy(im_mask).astype(int)
+            im_mask[ im_mask <= 0 ] = 0
+            im_mask[ im_mask  > 0 ] = 1
+            mask_found = 1
+            
+    if (im_mask is None):
+        print (str(nChannels) + " images were found. No mask.")
+    else:
+        print (str(nChannels) + " images were found + mask.")
+
+    return im_stack, im_mask
+
 
 ### Block extraction and pairwise moment comparison methods ###
 
