@@ -486,14 +486,14 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     ### Now compute the pairwise distances between the moments ###
     # Using masked arrays to get moments for masked patches
     def get_masked_array(patch, patch_mask):
-        unrolled = patch.reshape(-1, 3)
+        unrolled = patch.reshape(-1, img.shape[2])
         _um = patch_mask.reshape(unrolled.shape[0])
         # In numpy, we mask/ignore values where the mask value is True (rather than False)
         # So notice we *invert* the mask, so true lands where zero was
-        unrolled_mask = (np.stack([_um,_um,_um], axis=-1) == 0)
+        unrolled_mask = (np.tile(_um,[img.shape[2],1]).T == 0)
         masked_array = np.ma.masked_where(unrolled_mask, unrolled)
         return masked_array
-    def masked_mean(patch, patch_mask): # ph x pw x 3, ph x pw
+    def masked_mean(patch, patch_mask): # ph x pw x n_channels, ph x pw
         if patch_mask.sum() <= 1: return None # Entirely masked (one pixel insufficient)
         masked_array = get_masked_array(patch, patch_mask)
         if verbose: print('\tNvalid pixels in patch mean:', masked_array.count())
@@ -527,7 +527,7 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     n_valid = len(means)
     if verbose: print('N_valid', n_valid)
     # Calculate actual pairwise distances based on the moments
-    channel_len = 3
+    channel_len = img.shape[2]
     C_squared = channel_len**2
     N_valid_squared = n_valid**2
     if mode == 'central':
@@ -564,7 +564,7 @@ def blockify(img, mask, block_cuts, verbose):
     if verbose: print('img, mask, block_cuts shapes:', img.shape, mask.shape, block_cuts)
     N_divs_h, N_divs_w = block_cuts
     H, W, C = img.shape
-    assert mask.shape[0] == img.shape[0] and img.shape[1] == img.shape[1]
+    assert mask.shape[0] == img.shape[0] and mask.shape[1] == img.shape[1]
     residual_h, residual_w = H % N_divs_h, W % N_divs_w
     if verbose: print('residuals', residual_h, residual_w)
     if residual_h > 0:
@@ -582,7 +582,7 @@ def blockify(img, mask, block_cuts, verbose):
 
 def channelwise_extract_blocks(I, block_shape):
     Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape)
-           for i in range(3) ]
+           for i in range(I.shape[2]) ]
     return np.stack(Cs, axis=-1) # NB_h x NB_w x HB x WB x C
 
 #

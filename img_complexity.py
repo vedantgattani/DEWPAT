@@ -604,8 +604,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(patchwise_global_covar(img), 7)
 
     #--------------------------------------------------------------------------------------------------------------------#
-    # STOPPED HERE
-    alpha_mask = img_mask
+    
     #> Measure 8: Pairwise patch EMD (i.e., mean pairwise Wasserstein distance over patches)
     # TODO bugged? doesnt remove alpha masked patches
     if 8 in complexities_to_use:
@@ -717,10 +716,10 @@ def compute_complexities(impath,    # Path to input image file
         add_new(pairwise_wasserstein_distance(img, **emd_args), 8)
 
     #--------------------------------------------------------------------------------------------------------------------#    
-
+    
     # HACK 1: Mask handling for measures > 9
     if using_alpha_mask:
-        mask_pwmm = alpha_mask
+        mask_pwmm = img_mask
     else:
         mask_pwmm = np.ones((h,w), dtype=int)
 
@@ -737,11 +736,11 @@ def compute_complexities(impath,    # Path to input image file
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS,
                     gamma_mu_weight=1.0,
                     gamma_cov_weight=0.0, 
-                    display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
+                    display_intermeds=(show_pw_mnt_ptchs and is_color), verbose=verbose)
         add_new(patchwise_mean_dist(img, mask_pwmm), 9)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     # Measure 10: moment-matching pairwise distances
     if 10 in complexities_to_use:
         # Don't display the same patches twice
@@ -755,7 +754,7 @@ def compute_complexities(impath,    # Path to input image file
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS, 
                     gamma_mu_weight=args.gamma_mu_weight,
                     gamma_cov_weight=args.gamma_cov_weight, 
-                    display_intermeds=show_pw_mnt_ptchs2, verbose=verbose)
+                    display_intermeds=(show_pw_mnt_ptchs2 and is_color), verbose=verbose)
         add_new(patchwise_moment_dist(img, mask_pwmm), 10)
 
     #--------------------------------------------------------------------------------------------------------------------#
@@ -773,7 +772,8 @@ def compute_complexities(impath,    # Path to input image file
         add_new(dwt_complexity_handler(img, mask_pwmm), 11)
 
     #--------------------------------------------------------------------------------------------------------------------#
-    
+    # STOPPED HERE
+    alpha_mask = img_mask
     # Measure 12: Pairwise distributional patch matching - Symmetric KL divergence (Jeffrey's divergence)
     # Measure 13: Pairwise distributional patch matching - Wasserstein-2 metric
     # Measure 14: Pairwise distributional patch matching - Hellinger distance
