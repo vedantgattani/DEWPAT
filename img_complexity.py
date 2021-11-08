@@ -503,8 +503,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(local_patch_covariance(img), 3)
 
     #--------------------------------------------------------------------------------------------------------------------#
-    # STOPPED HERE
-    alpha_mask = img_mask
+    
     #>> Measure 4: Average gradient magnitude of the input
     # Note: this computes the second-order derivatives if we're using a gradient image
     # Note: even if we mask the gradient image, the gradient on the boundary will still be high
@@ -517,20 +516,20 @@ def compute_complexities(impath,    # Path to input image file
                 gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
                 imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True, mask = alpha_mask)
             if using_alpha_mask:
-                grad_img[alpha_mask <= 0] = 0
+                grad_img[img_mask <= 0] = 0
             return np.mean(grad_img)
         add_new(avg_gradient_norm(img), 4)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 5: Continuous-space Differential Shannon entropy across pixels
     if 5 in complexities_to_use:
         @timing_decorator(args.timing)
         def cont_pixelwise_diff_ent(img):
             if verbose: print('Computing continuous pixel-wise differential entropy')
-            float_img = skimage.img_as_float(img).reshape(h * w, 3) # list of pixel values
+            float_img = skimage.img_as_float(img).reshape(h * w, n_channels) # list of pixel values
             if using_alpha_mask:
-                unfolded_mask = alpha_mask.reshape(h * w)
+                unfolded_mask = img_mask.reshape(h * w)
                 _str_tmp = "\tMask Sum: " + str(unfolded_mask.sum()) + ", Orig Shape: " + str(float_img.shape)
                 float_img = float_img[ unfolded_mask > 0 ]
                 _str_tmp += ", Masked Shape: " + str(float_img.shape)
@@ -542,7 +541,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(cont_pixelwise_diff_ent(img), 5)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 6: Continuous-space Differential Shannon entropy over patches
     # Note 1: this measure is not invariant to rotations of patches
     # Note 2: for images with large swathes of identical patches, this method can suffer large increases
@@ -557,10 +556,10 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatch windows size:', patches_dse.shape)
             # Gathers unfolded patches across the image
             if using_alpha_mask:
-                alpha_over_patches = patches_per_channel(alpha_mask, diff_ent_patch_size, diff_ent_window_step)
+                alpha_over_patches = patches_per_channel(img_mask, diff_ent_patch_size, diff_ent_window_step)
                 patch_vectors = vectorize_masked_patches(patches_dse, alpha_over_patches, ps[1], ps[2])
             else:
-                patch_vectors = np.array([ patches_dse[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+                patch_vectors = np.array([ patches_dse[:,i,j,:,:].reshape(wt * n_channels) for i in range(ps[1]) for j in range(ps[2]) ])
             # Randomly resample patches to meet maximum number present
             if max_patches_cont_DE < patch_vectors.shape[0]:
                 if verbose: print('\tResampling patch vectors (original size: %s)' % str(patch_vectors.shape))
@@ -574,7 +573,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(patchwise_diff_ent(img), 6)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 7: Global patch-wise covariance logdet
     # Note: this measure is also sensitive to patch orientation (e.g., rotating a patch will affect it)
     if 7 in complexities_to_use:
@@ -587,10 +586,10 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatch windows size:', patchesgc.shape)
             # Gathers unfolded patches across the image
             if using_alpha_mask:
-                alpha_over_patchesgc = patches_per_channel(alpha_mask, global_cov_window_size, global_cov_window_step)
+                alpha_over_patchesgc = patches_per_channel(img_mask, global_cov_window_size, global_cov_window_step)
                 patch_vectors = vectorize_masked_patches(patchesgc, alpha_over_patchesgc, ps[1], ps[2])
             else:
-                patch_vectors = np.array([ patchesgc[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+                patch_vectors = np.array([ patchesgc[:,i,j,:,:].reshape(wt * n_channels) for i in range(ps[1]) for j in range(ps[2]) ])
             if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
             # Compute covariance matrix of the unfolded vectors
             global_cov = np.cov( patch_vectors.T )
@@ -605,7 +604,8 @@ def compute_complexities(impath,    # Path to input image file
         add_new(patchwise_global_covar(img), 7)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    # STOPPED HERE
+    alpha_mask = img_mask
     #> Measure 8: Pairwise patch EMD (i.e., mean pairwise Wasserstein distance over patches)
     # TODO bugged? doesnt remove alpha masked patches
     if 8 in complexities_to_use:
