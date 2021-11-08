@@ -135,7 +135,7 @@ def patches_over_channels(img, patch_size, window_step, return_meta=True, floati
             img = skimage.img_as_float(img)
     P = np.array([
             patches_per_channel(img[:,:,k], patch_size, window_step)
-            for k in range(3)
+            for k in range(img.shape[2])
         ])
     if return_meta: return P, P.shape, patch_size**2
     return P

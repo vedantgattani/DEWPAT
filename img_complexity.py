@@ -379,8 +379,6 @@ def compute_complexities(impath,    # Path to input image file
         complexities.append(val)
         computed_names.append(S_all[ind])
 
-    # STOPPED HERE
-    alpha_mask = img_mask
     #####################################
     ### Computing complexity measures ###
     #####################################
@@ -394,19 +392,19 @@ def compute_complexities(impath,    # Path to input image file
                 def masked_discrete_shannon(channel, first):
                     channel = np.copy(channel).astype(int)
                     _fake_pixel_val, alpha_mask_threshold = -1000, 0
-                    channel[ alpha_mask <= alpha_mask_threshold ] = _fake_pixel_val
+                    channel[ img_mask <= alpha_mask_threshold ] = _fake_pixel_val
                     unique_vals, counts = np.unique(channel, return_counts=True)
                     new_counts = [ c for ii, c in enumerate(counts) if not unique_vals[ii] == _fake_pixel_val ]
                     if first and verbose: print('\tN_pixels before & after masking:', sum(counts), '->', sum(new_counts))
                     return scipy_discrete_shannon_entropy(new_counts, base=np.e)
-                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i], i==0) for i in range(3)])
+                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i], i==0) for i in range(n_channels)])
             else:
-                shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(3)])
+                shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(n_channels)])
             return shannon_entropy
         add_new(discrete_pixelwise_shannon_entropy(img), 0)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 1: Averaged channel-wise local entropy
     if 1 in complexities_to_use:
         @timing_decorator(args.timing)
@@ -414,18 +412,18 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('Computing local discrete entropies')
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                current_mask_local_ent = alpha_mask if using_alpha_mask else None
+                current_mask_local_ent = img_mask if using_alpha_mask else None
                 le_img = np.array([ skimage.filters.rank.entropy(img[:,:,i], 
                                                                  disk(local_entropy_disk_size),
                                                                  mask=current_mask_local_ent)
-                            for i in range(3) ]).mean(axis=0)
+                            for i in range(n_channels) ]).mean(axis=0)
             if show_locent_image: 
                 imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=alpha_mask)
             return np.mean(le_img)
         add_new(channelwise_local_entropies(img), 1)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 2: High frequency content via weighted average
     # Note: masks, even if present, are not used here, since we would be getting irregular domain harmonics rather than Fourier coefs
     # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
@@ -434,7 +432,7 @@ def compute_complexities(impath,    # Path to input image file
         @timing_decorator(args.timing)
         def mean_weighted_fourier_coef(img):
             if verbose: print('Computing Fourier images')
-            fourier_images = [ fp.fft2(img[:,:,find]) for find in range(3) ]
+            fourier_images = [ fp.fft2(img[:,:,find]) for find in range(n_channels) ]
             shifted_fourier_images = np.array([ np.fft.fftshift(fourier_image) for fourier_image in fourier_images ])
             shifted_fourier_logmag_image = np.array([ np.log( np.abs(shifted_fourier_image) )
                                                 for shifted_fourier_image in shifted_fourier_images
@@ -459,7 +457,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(mean_weighted_fourier_coef(img), 2)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 3: Local (intra-)patch covariances
     # Closely related to the distribution of L_2 distance between patches
     # Note: vectorize over the patches? use slogdet
@@ -476,11 +474,11 @@ def compute_complexities(impath,    # Path to input image file
             patches, ps, wt = patches_over_channels(img, local_patch_size, local_covar_wstep)
             # Per patch: (1) extracts window, (2) unfolds it into pixel values, (3) computes the covariance
             if using_alpha_mask:
-                alpha_over_patches = patches_per_channel(alpha_mask, local_patch_size, local_covar_wstep)
+                alpha_over_patches = patches_per_channel(img_mask, local_patch_size, local_covar_wstep)
                 def masked_detcov(i,j):
                     mask_patch = alpha_over_patches[i,j,:,:]
                     if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
-                    unfolded_patch = patches[:,i,j,:,:].reshape(3, wt)
+                    unfolded_patch = patches[:,i,j,:,:].reshape(n_channels, wt)
                     return scalarize(np.cov( unfolded_patch ))
                 if verbose: 
                     print('\tPatches Size: %s (Mask Size: %s)' % 
@@ -488,11 +486,11 @@ def compute_complexities(impath,    # Path to input image file
                 covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
             else:
                 if verbose: print('\tPatches Size:', patches.shape)
-                #print( "Patches", [ [ patches[:,i,j,:,:].reshape(3,wt) for j in range(ps[2]) ] for i in range(ps[1]) ] )
-                #print( "covs", [ [ np.cov( patches[:,i,j,:,:].reshape(3, wt) )
+                #print( "Patches", [ [ patches[:,i,j,:,:].reshape(n_channels,wt) for j in range(ps[2]) ] for i in range(ps[1]) ] )
+                #print( "covs", [ [ np.cov( patches[:,i,j,:,:].reshape(n_channels, wt) )
                 #                        for j in range(ps[2]) ] for i in range(ps[1]) ] )
                 #sys.exit(0)
-                covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(3, wt) ))
+                covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(n_channels, wt) ))
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
@@ -505,7 +503,8 @@ def compute_complexities(impath,    # Path to input image file
         add_new(local_patch_covariance(img), 3)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    # STOPPED HERE
+    alpha_mask = img_mask
     #>> Measure 4: Average gradient magnitude of the input
     # Note: this computes the second-order derivatives if we're using a gradient image
     # Note: even if we mask the gradient image, the gradient on the boundary will still be high
