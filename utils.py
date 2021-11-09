@@ -148,15 +148,16 @@ def patches_per_channel(channel, patch_size, window_step):
                 step=window_step)
 
 def vectorize_single_masked_patch(patches, mask, i, j, wt):
+    print(patches.shape)
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
-    unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
+    unfolded_patch = patches[:,i,j,:,:].reshape(wt * patches.shape[0])
     return unfolded_patch
 
 def vectorize_single_masked_patch_as_list(patches, mask, i, j, wt):
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
-    listified_patch = patches[:,i,j,:,:].reshape(3, wt).T
+    listified_patch = patches[:,i,j,:,:].reshape(patches.shape[0], wt).T
     return listified_patch
 
 def vectorize_masked_patches(patches, mask, H, W, as_list=False, flatten=True, remove_none=True):
