@@ -198,7 +198,7 @@ input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon,
                args.pairwise_emd, args.pairwise_mean_distances,
                args.pairwise_moment_distances, args.wavelet_details,
                args.pwg_jeffreys_div, args.pwg_w2_div, args.pwg_hellinger_div,
-               args.pwg_bhattacharyya_div, args.pwg_fmatf_div ]
+               args.pwg_bhattacharyya_div, args.pwg_fmatf_div]
 assert len(S_all) == len(input_vals)
 if all(map(lambda k: k is None, input_vals)):
     # No metric specified
@@ -319,7 +319,7 @@ def compute_complexities(impath,    # Path to input image file
     using_alpha_mask = not (img_mask is None)
     if using_alpha_mask:
         if False: # Display mask
-            imdisplay(img_mask, 'alpha_mask', colorbar=True, cmap='plasma')
+            imdisplay(img_mask, 'image_mask', colorbar=True, cmap='plasma')
             plt.show()
 
     # Ignore the alpha channel, if desired
@@ -623,21 +623,21 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatches Shape', patches_emd.shape)
             # CASE 1: using alpha mask
             if using_alpha_mask:
-                if emd_visualize: imdisplay( alpha_mask, 'Original Mask', True )
+                if emd_visualize: imdisplay( img_mask, 'Original Mask', True )
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    alpha_mask_ds = skimage.img_as_ubyte(
+                    img_mask_ds = skimage.img_as_ubyte(
                                         skimage.transform.rescale( 
-                                            skimage.img_as_float(skimage.img_as_ubyte(alpha_mask*255)), 
+                                            skimage.img_as_float(skimage.img_as_ubyte(img_mask*255)), 
                                             scale=image_rescaling_factor) )
-                alpha_mask_ds[ alpha_mask_ds >  1e-8 ] = 1
-                alpha_mask_ds[ alpha_mask_ds <= 1e-8 ] = 0
-                if emd_visualize: imdisplay(alpha_mask_ds, 'Downscaled mask', True)
-                alpha_over_patches_emd = patches_per_channel(alpha_mask_ds, emd_window_size, emd_window_step)
+                img_mask_ds[ img_mask_ds >  1e-8 ] = 1
+                img_mask_ds[ img_mask_ds <= 1e-8 ] = 0
+                if emd_visualize: imdisplay(img_mask_ds, 'Downscaled mask', True)
+                alpha_over_patches_emd = patches_per_channel(img_mask_ds, emd_window_size, emd_window_step)
                 patch_lists = vectorize_masked_patches(patches_emd, alpha_over_patches_emd, ps[1], ps[2], as_list=True)
             # CASE 2: no alpha channel
             else:
-                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(3, wt).T 
+                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(n_channels, wt).T 
                                          for i in range(ps[1]) for j in range(ps[2]) ])
             if verbose: print('\tPatch lists shape:', patch_lists.shape)
             # Visualize (random or first few) patches
@@ -650,15 +650,15 @@ def compute_complexities(impath,    # Path to input image file
                     ris = np.random.choice(patch_lists.shape[0], size=n_to_vis, replace=False)
                 else:             
                     ris = np.array( range(n_to_vis) )
-                # Index into list (N_patches x unfolded_window_size x 3)
-                patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
+                # Index into list (N_patches x unfolded_window_size x n_channels)
+                patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, n_channels)
                 patch_display(patches_to_vis, nr, nc, show=False, title='EMD Patches', subtitles=ris)
             # Append coordinates if desired
             if coordinate_aware:
                 if verbose: print('\tUsing coordinate-aware calculations')
                 n_patches = patch_lists.shape[0]
                 # Refold vectorized patches back into windows
-                refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, 3)
+                refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, n_channels)
                 # Linear walk from 0 to 1
                 lin_walk = np.linspace(0.0, 1.0, emd_window_size)
                 # Expand linear walk to normalized patch coordinates, and rescale spatial values
@@ -666,7 +666,7 @@ def compute_complexities(impath,    # Path to input image file
                 # Duplicate patches for each image patch
                 coord_patches = np.repeat( patch_of_coords[ np.newaxis, :, : ], n_patches, axis=0 )
                 # Concatenate image patch pixel values with coordinate values
-                patch_lists = np.concatenate( (coord_patches, refolded_patches), axis=3 ).reshape(n_patches, wt, 5)
+                patch_lists = np.concatenate( (coord_patches, refolded_patches), axis=3 ).reshape(n_patches, wt, coord_patches.shape[-1]+n_channels)
                 if verbose: print('\tPatch sizes with appended coords:', patch_lists.shape)
             ## Choose solver ##
             if use_sinkhorn: # Entropy-regularized approximate solver
@@ -772,8 +772,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(dwt_complexity_handler(img, mask_pwmm), 11)
 
     #--------------------------------------------------------------------------------------------------------------------#
-    # STOPPED HERE
-    alpha_mask = img_mask
+    
     # Measure 12: Pairwise distributional patch matching - Symmetric KL divergence (Jeffrey's divergence)
     # Measure 13: Pairwise distributional patch matching - Wasserstein-2 metric
     # Measure 14: Pairwise distributional patch matching - Hellinger distance
@@ -805,7 +804,7 @@ def compute_complexities(impath,    # Path to input image file
                         block_cuts        = pw_mnt_dist_nonOL_WS, # TODO option for overlapping as well
                         gamma_mu_weight   = None,
                         gamma_cov_weight  = None,
-                        display_intermeds = show_pw_mnt_ptchs_curr, 
+                        display_intermeds = (show_pw_mnt_ptchs_curr and is_color), 
                         verbose           = verbose,
                         mode              = _metric_dict[_p_com] )
             add_new(patchwise_moment_dist_c(img, mask_pwmm), _p_com)
@@ -813,7 +812,7 @@ def compute_complexities(impath,    # Path to input image file
     ### </ Finished computing complexity measures /> ###
 
     #######################################################################################################################
-
+    
     # Minor checks
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
 
