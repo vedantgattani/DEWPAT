@@ -328,8 +328,8 @@ def compute_complexities(impath,    # Path to input image file
         img_mask = None
    
     # Convert image to greyscale, if desired
+    is_scalar = False
     if (is_color):
-        is_scalar = False
         gs_type = args.greyscale.lower()
         assert gs_type in ["none", "human", "avg"], 'Use one of --greyscale none/avg/human'
         if gs_type == 'human':

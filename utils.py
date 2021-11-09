@@ -148,7 +148,6 @@ def patches_per_channel(channel, patch_size, window_step):
                 step=window_step)
 
 def vectorize_single_masked_patch(patches, mask, i, j, wt):
-    print(patches.shape)
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
     unfolded_patch = patches[:,i,j,:,:].reshape(wt * patches.shape[0])
@@ -430,12 +429,12 @@ def convert_im_stack(im_path):
     
     nChannels = 0
     mask_found = 0
+    im_mask = None
     
     for im_file in glob.glob(im_path+"*"):
         image = io.imread(im_file)
         if (nChannels == 0):
             im_stack = image[:,:,0]
-            im_mask = None
         else:
             im_stack = np.dstack((im_stack,image[:,:,0]))
             
@@ -447,7 +446,10 @@ def convert_im_stack(im_path):
             im_mask[ im_mask <= 0 ] = 0
             im_mask[ im_mask  > 0 ] = 1
             mask_found = 1
-            
+
+    if (nChannels == 0): 
+        raise NameError("No images were found in path: " + im_path)
+    
     if (im_mask is None):
         print (str(nChannels) + " images were found. No mask.")
     else:
