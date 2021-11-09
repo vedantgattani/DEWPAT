@@ -32,7 +32,7 @@ def gaussian_prob_divergence(mode, means, covs):
     ### Precomputations ###
     pre_reqs = distinfo[mode]
     eps = 1e-7
-    I_eps = np.eye(3) * eps
+    I_eps = np.eye(means[0].shape[0]) * eps
 
     # Remove masks
     means = [ mean.data for mean in means ]
@@ -82,7 +82,7 @@ def gaussian_prob_divergence(mode, means, covs):
 
 def jeffreys_div_gauss(mu1, mu2, sigma1, sigma2, sigma1_inverse, sigma2_inverse):
     """ J-divergence (Symmetrized KL divergence) between two Gaussians """
-    I = np.eye(3)
+    I = np.eye(mu1.shape[0])
     C_A = 0.5 * (sigma1 + sigma2)
     mean_metric = C_A_inv_scaled_mean_dist(mu1, mu2, C_A + I*1e-7)
     cov_term = 0.5 * np.trace( sigma1_inverse @ sigma2 + sigma2_inverse @ sigma1 - 2*I )
@@ -91,21 +91,21 @@ def jeffreys_div_gauss(mu1, mu2, sigma1, sigma2, sigma1_inverse, sigma2_inverse)
 def wass2_div_gauss(mu1, mu2, sigma1, sigma2, sigma1_sqrt, sigma2_sqrt):
     """ Wasserstein-2 divergence between two Gaussians """
     mean_diff = ( (mu1 - mu2)**2 ).sum()
-    I = np.eye(3)
+    I = np.eye(mu1.shape[0])
     inner_bal = SLA.sqrtm( sigma2_sqrt @ sigma1 @ sigma2_sqrt + I*1e-7 ) 
     cov_diff  = np.trace( sigma1 + sigma2 - 2*inner_bal)
     return np.clip(mean_diff + cov_diff, a_min = 1e-7, a_max = None)
 
 def hellinger_div_gauss(mu1, mu2, sigma1, sigma2, det_sigma1, det_sigma2):
     """ Hellinger divergence between two Gaussians (technically the squared Hellinger distance) """
-    C_A = 0.5 * (sigma1 + sigma2) + np.eye(3)*1e-7
+    C_A = 0.5 * (sigma1 + sigma2) + np.eye(mu1.shape[0])*1e-7
     coef = np.power(det_sigma1, 0.25) * np.power(det_sigma2, 0.25) / np.sqrt( np.linalg.det(C_A) + 1e-7 )
     exp_term = np.exp( -1.0 * C_A_inv_scaled_mean_dist(mu1, mu2, C_A) / 8.0 )
     return 1.0 - coef * exp_term
 
 def bhattacharyya_div_gauss(mu1, mu2, sigma1, sigma2, det_sigma1, det_sigma2):
     """ Bhattacharyya distance between two Gaussians """
-    C_A = 0.5 * (sigma1 + sigma2) + np.eye(3)*1e-7
+    C_A = 0.5 * (sigma1 + sigma2) + np.eye(mu1.shape[0])*1e-7
     det_C_A = np.linalg.det(C_A)
     mean_diff = C_A_inv_scaled_mean_dist(mu1, mu2, C_A) / 8.0
     cov_term = 0.5 * np.log( det_C_A / np.sqrt( det_sigma1 * det_sigma2 + 1e-7 ) )
@@ -113,12 +113,12 @@ def bhattacharyya_div_gauss(mu1, mu2, sigma1, sigma2, det_sigma1, det_sigma2):
 
 def FMAF_div_gauss(mu1, mu2, sigma1, sigma2, sigma2_inverse, eps=1e-6):
     """ The Abou-Mustafa, Torres, and Ferries divergence using the Forstner-Moonen Covariance metric """ 
-    C_A = 0.5 * (sigma1 + sigma2) + np.eye(3)*eps
+    C_A = 0.5 * (sigma1 + sigma2) + np.eye(mu1.shape[0])*eps
     #print('ca', C_A)
     mean_diff = np.sqrt( C_A_inv_scaled_mean_dist(mu1, mu2, C_A) + eps )
     #print('md', mean_diff)
     # lambda = eigenvalues(sigma_1 sigma_2_inverse), so sigma_1 V = lambda sigma_2 V
-    B = (sigma1 + np.eye(3)*eps) @ sigma2_inverse
+    B = (sigma1 + np.eye(mu1.shape[0])*eps) @ sigma2_inverse
     #print('B', B)
     lambda_evals = np.absolute( np.linalg.eigvals( B ) )
     #print(lambda_evals, 'lam')
