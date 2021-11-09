@@ -309,7 +309,7 @@ def compute_complexities(impath,    # Path to input image file
             alpha_layer = conv_to_ubyte(img_mask)            
             alpha_layer[ alpha_layer > 128] = 255
             alpha_layer[ alpha_layer <= 128] = 0
-            if False:
+            if (False and is_color):
                 imdisplay(alpha_layer, 'alpha_layer', colorbar=True, cmap='plasma')
                 imdisplay(img, 'layers', colorbar=True, cmap='plasma')
                 plt.show()
@@ -318,7 +318,7 @@ def compute_complexities(impath,    # Path to input image file
     
     using_alpha_mask = not (img_mask is None)
     if using_alpha_mask:
-        if False: # Display mask
+        if (False and is_color): # Display mask
             imdisplay(img_mask, 'image_mask', colorbar=True, cmap='plasma')
             plt.show()
 
@@ -360,7 +360,7 @@ def compute_complexities(impath,    # Path to input image file
     # Perform masking directly on the image (to destroy details hidden behind the alpha channel)
     if using_alpha_mask and not args.ignore_alpha:
         img[ img_mask <= 0 ] = 0
-    if display_image: imdisplay(img, 'Image')
+    if (display_image and is_color): imdisplay(img, 'Image')
     if verbose:
         print('Image Shape:', img.shape)
         print('Channelwise Min/Max')
@@ -417,8 +417,8 @@ def compute_complexities(impath,    # Path to input image file
                                                                  disk(local_entropy_disk_size),
                                                                  mask=current_mask_local_ent)
                             for i in range(n_channels) ]).mean(axis=0)
-            if show_locent_image: 
-                imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=alpha_mask)
+            if (show_locent_image and is_color): 
+                imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=img_mask)
             return np.mean(le_img)
         add_new(channelwise_local_entropies(img), 1)
 
@@ -445,7 +445,7 @@ def compute_complexities(impath,    # Path to input image file
             index_grid_cen = index_grid_cen / np.max(index_grid_cen) 
             fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
             fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
-            if show_fourier_image:
+            if (show_fourier_image and is_color):
                 imdisplay(avg_fourier_image, 'Fourier Transform', colorbar=True, cmap='viridis')
                 imdisplay(index_grid_cen, 'Fourier-space distance weights', colorbar=True, cmap='gray')
                 # Avoid loss of phase information in order to view image (but note it's ignored in the metric)
@@ -494,11 +494,11 @@ def compute_complexities(impath,    # Path to input image file
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
-            if show_loccov_image:
+            if (show_loccov_image and is_color):
                 h, w, c = img.shape
                 resized_local_covar_img = skimage.transform.resize(local_covar_img, output_shape=(h,w), order=3)
                 imdisplay(resized_local_covar_img, 'Local Covariances', cmap = 'viridis', 
-                          colorbar = True, mask = alpha_mask) 
+                          colorbar = True, mask = img_mask) 
             return np.mean(local_covar_img)
         add_new(local_patch_covariance(img), 3)
 
@@ -512,9 +512,9 @@ def compute_complexities(impath,    # Path to input image file
         def avg_gradient_norm(img):
             if verbose: print('Computing average edginess')
             grad_img = generate_gradient_magnitude_image(img)
-            if show_gradient_img:
+            if (show_gradient_img and is_color):
                 gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
-                imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True, mask = alpha_mask)
+                imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True, mask = img_mask)
             if using_alpha_mask:
                 grad_img[img_mask <= 0] = 0
             return np.mean(grad_img)
@@ -617,13 +617,13 @@ def compute_complexities(impath,    # Path to input image file
             # Resize image
             img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, multichannel=True)
             if verbose: print('\tDownscaled image dims:', img.shape)
-            if emd_visualize: imdisplay(img, 'Downscaled img')
+            if (emd_visualize and is_color): imdisplay(img, 'Downscaled img')
             # Extract patches
             patches_emd, ps, wt = patches_over_channels(img, emd_window_size, emd_window_step, floatify=True)
             if verbose: print('\tPatches Shape', patches_emd.shape)
             # CASE 1: using alpha mask
             if using_alpha_mask:
-                if emd_visualize: imdisplay( img_mask, 'Original Mask', True )
+                if (emd_visualize and is_color): imdisplay( img_mask, 'Original Mask', True )
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     img_mask_ds = skimage.img_as_ubyte(
@@ -632,7 +632,7 @@ def compute_complexities(impath,    # Path to input image file
                                             scale=image_rescaling_factor) )
                 img_mask_ds[ img_mask_ds >  1e-8 ] = 1
                 img_mask_ds[ img_mask_ds <= 1e-8 ] = 0
-                if emd_visualize: imdisplay(img_mask_ds, 'Downscaled mask', True)
+                if (emd_visualize and is_color): imdisplay(img_mask_ds, 'Downscaled mask', True)
                 alpha_over_patches_emd = patches_per_channel(img_mask_ds, emd_window_size, emd_window_step)
                 patch_lists = vectorize_masked_patches(patches_emd, alpha_over_patches_emd, ps[1], ps[2], as_list=True)
             # CASE 2: no alpha channel
@@ -817,8 +817,8 @@ def compute_complexities(impath,    # Path to input image file
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
 
     # Show images if needed
-    if ( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-         or args.emd_visualize or show_pw_mnt_ptchs):
+    if (( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
+         or args.emd_visualize or show_pw_mnt_ptchs) and is_color):
         plt.show()
 
     ### Print (single image case) and return output ###
