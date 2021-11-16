@@ -270,7 +270,7 @@ def main_helper(img_path, args):
         def attempt_merge(currLI):
             """ Runs a single merge iteration. Returns None if nothing was merged. """
             print('\tEntering single merge attempt')
-            D = label_img_to_stats(img, img_mask, currLI)
+            D = label_img_to_stats(img, img_mask, currLI, is_color=is_color)
             cluster_stats = D['cluster_info']['cluster_stats']
             current_labels = D['cluster_info']['allowed_labels']
             found_failure = False
@@ -344,7 +344,7 @@ def main_helper(img_path, args):
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
-    img_stats = label_img_to_stats(img, img_mask, label_image, mean_seg_img, args.verbose)
+    img_stats = label_img_to_stats(img, img_mask, label_image, is_color, args.verbose)
 
     ### Visualization ###
     if args.display: vis_label_img(img, label_image, args)
@@ -353,42 +353,40 @@ def main_helper(img_path, args):
     if args.verbose: print('Finished processing', img_path)
     return M, img_stats
 
-def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
+def label_img_to_stats(img, mask, label_img, is_color, verbose=False):
     """
     Returns a dictionary of label img and initial image stats
     This includes a subdictionary of information per label set (cluster)
     """
-    if mean_seg_img is None:
-        mean_seg_img = color.label2rgb(label_img, image = img, bg_label = -1, 
-                                       bg_color = (0.0, 0.0, 0.0), kind = 'avg')
-    # 
-    H, W, C = img.shape
+    
+    H, W, n_channels = img.shape
     allowed_labels = list(set(label_img.flatten().astype(int).tolist()))
     n_labels = len(allowed_labels)
     n_masked = (label_img == -1).sum()
     n_unmasked = (H*W) - n_masked
     cluster_info = { 'n_labels' : n_labels, 'allowed_labels' : allowed_labels }
     cluster_stats = {}
+
     for label in allowed_labels:
         if label == -1: continue # Ignore bg
+            
         bool_indexer = np.logical_and(mask != 0, label_img == label)
-        orig_vals = img[bool_indexer] # Valid values in the current cluster
-        mean_vals = mean_seg_img[bool_indexer]
-        mean_cluster_value = orig_vals.mean(0)
-        premeaned_val = mean_vals.mean(0)
-        premeaned_val_hsv = rgb2hsv(premeaned_val.reshape(1,1,3) / 255.0)[0,0,:]
-        cluster_stats[label] = {
-            'label_number'          : label,
-            'mean_C1'               : mean_cluster_value[0], # R (floats)
-            'mean_C2'               : mean_cluster_value[1], # G
-            'mean_C3'               : mean_cluster_value[2], # B
-            'mean_C1_hsv'           : premeaned_val_hsv[0],  # H in [0,1], multiply by 360 to get degrees
-            'mean_C2_hsv'           : premeaned_val_hsv[1],  # S
-            'mean_C3_hsv'           : premeaned_val_hsv[2],  # V
-            'n_member_pixels'       : orig_vals.shape[0],
-            'percent_member_pixels' : orig_vals.shape[0] / n_unmasked,
-            'mean_colour'           : premeaned_val, # Integer array
-        }
+        orig_vals = img[bool_indexer] # Valid values in the current cluster       
+        mean_cluster_value = orig_vals.mean(0) # Mean value for each channel of img
+       
+        # Fill in cluster_stats dictionary
+        cluster_stats[label] = {'label_number':label}
+        for i in range(len(mean_cluster_value)):
+            cluster_stats[label]['mean_value'+str(i+1)] = mean_cluster_value[i]
+        if (is_color):
+            mean_cluster_value_hsv = rgb2hsv(mean_cluster_value.reshape(1,1,3) / 255.0)[0,0,:]
+            cluster_stats[label]['mean_value_H'] = mean_cluster_value_hsv[0]
+            cluster_stats[label]['mean_value_S'] = mean_cluster_value_hsv[1]
+            cluster_stats[label]['mean_value_V'] = mean_cluster_value_hsv[2]
+        cluster_stats[label]['n_member_pixels'] = orig_vals.shape[0]
+        cluster_stats[label]['percent_member_pixels'] = orig_vals.shape[0] / n_unmasked
+        cluster_stats[label]['mean_colour'] = mean_cluster_value
+            
     cluster_info['cluster_stats'] = cluster_stats
     D = { 'H'                 : H,
           'W'                 : W,
