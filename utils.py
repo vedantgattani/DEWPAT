@@ -413,14 +413,13 @@ def load_image(im_path):
     
     if (nChannels == 4):
         im_mask = image[:,:,-1]
-        im_mask = np.copy(im_mask).astype(int)
         im_mask[ im_mask <= 0 ] = 0
         im_mask[ im_mask  > 0 ] = 1
-        
         image = image[:,:,0:3]
     else:
         im_mask = None    
-    
+    print("img " + str(image.dtype))
+    print("mask " + str(im_mask.dtype))
     return image, im_mask
 
 def convert_im_stack(im_path):

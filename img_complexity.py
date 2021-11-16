@@ -298,6 +298,7 @@ def compute_complexities(impath,    # Path to input image file
     running_resize = False
     if abs(resize_factor_main - 1.0) > 1e-4:
         running_resize = True
+        print("allo!")
         if verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
         img = skimage.transform.rescale(img, scale=resize_factor_main, 
                 anti_aliasing=True, multichannel=True)
@@ -305,12 +306,12 @@ def compute_complexities(impath,    # Path to input image file
         if verbose: print("Resized dims:", img.shape)
         if (img_mask is not None):
             img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main, 
-                anti_aliasing=True, multichannel=True)
-            alpha_layer = conv_to_ubyte(img_mask)            
-            alpha_layer[ alpha_layer > 128] = 255
-            alpha_layer[ alpha_layer <= 128] = 0
+                anti_aliasing=True, multichannel=False)
+            img_mask = conv_to_ubyte(img_mask)
+            img_mask[ img_mask > 0] = 1
+            img_mask[ img_mask <= 0] = 0
             if (False and is_color):
-                imdisplay(alpha_layer, 'alpha_layer', colorbar=True, cmap='plasma')
+                imdisplay(img_mask, 'alpha_layer', colorbar=True, cmap='plasma')
                 imdisplay(img, 'layers', colorbar=True, cmap='plasma')
                 plt.show()
                    
