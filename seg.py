@@ -179,8 +179,8 @@ def main_helper(img_path, args):
 
     #img = skimage.io.imread(img_path)
     
-    is_color = True
-    if (is_color):
+    args.is_color = True
+    if (args.is_color):
         img, img_mask = load_image(img_path)
     else:
         img,img_mask = convert_im_stack(img_path)
@@ -270,7 +270,7 @@ def main_helper(img_path, args):
         def attempt_merge(currLI):
             """ Runs a single merge iteration. Returns None if nothing was merged. """
             print('\tEntering single merge attempt')
-            D = label_img_to_stats(img, img_mask, currLI, is_color=is_color)
+            D = label_img_to_stats(img, img_mask, currLI, args.is_color)
             cluster_stats = D['cluster_info']['cluster_stats']
             current_labels = D['cluster_info']['allowed_labels']
             found_failure = False
@@ -344,7 +344,7 @@ def main_helper(img_path, args):
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
-    img_stats = label_img_to_stats(img, img_mask, label_image, is_color, args.verbose)
+    img_stats = label_img_to_stats(img, img_mask, label_image, args.is_color, args.verbose)
 
     ### Visualization ###
     if args.display: vis_label_img(img, label_image, args)
@@ -406,7 +406,7 @@ def label(image, mask, method, args):
     Output: Pixelwise labels (M x N), integer
     """
     # Convert to desired colour space
-    if (is_color):
+    if (args.is_color):
         if not args.clustering_colour_space == 'rgb':
             if args.verbose: 
                 _K = args.clustering_colour_space 
