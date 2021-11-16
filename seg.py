@@ -406,21 +406,22 @@ def label(image, mask, method, args):
     Output: Pixelwise labels (M x N), integer
     """
     # Convert to desired colour space
-    if not args.clustering_colour_space == 'rgb':
-        if args.verbose: 
-            _K = args.clustering_colour_space 
-            _app = { 'cie' : '(CIE-1931-RGB)', 'lab' : '(CIE-LAB)', 'hsv' : '' }
-            print('Converting to colour space', _K, _app[_K]) 
-        if args.clustering_colour_space == 'hsv':
-            image = np.rint( rgb2hsv(image/255.0) * 255.0 ).astype(int) 
-        if args.clustering_colour_space == 'cie': # CIE1931
-            from skimage.color import rgb2rgbcie
-            image = np.rint( rgb2rgbcie(image/255.0) * 255.0 ).astype(int)
-        if args.clustering_colour_space == 'lab': # CIE-LAB / CIE L*a*b*
-            # LAB may be the most perceptually principled choice since (in humans)
-            # it can be used to compute more perceptual colour differences.
-            from skimage.color import rgb2lab # Bounds: [0,100], [-128,128], [-128,128]
-            image = np.rint( rgb2lab(image/255.0) ).astype(int) 
+    if (is_color):
+        if not args.clustering_colour_space == 'rgb':
+            if args.verbose: 
+                _K = args.clustering_colour_space 
+                _app = { 'cie' : '(CIE-1931-RGB)', 'lab' : '(CIE-LAB)', 'hsv' : '' }
+                print('Converting to colour space', _K, _app[_K]) 
+            if args.clustering_colour_space == 'hsv':
+                image = np.rint( rgb2hsv(image/255.0) * 255.0 ).astype(int) 
+            if args.clustering_colour_space == 'cie': # CIE1931
+                from skimage.color import rgb2rgbcie
+                image = np.rint( rgb2rgbcie(image/255.0) * 255.0 ).astype(int)
+            if args.clustering_colour_space == 'lab': # CIE-LAB / CIE L*a*b*
+                # LAB may be the most perceptually principled choice since (in humans)
+                # it can be used to compute more perceptual colour differences.
+                from skimage.color import rgb2lab # Bounds: [0,100], [-128,128], [-128,128]
+                image = np.rint( rgb2lab(image/255.0) ).astype(int) 
     # Perform clustering
     if method == 'graph_cuts': return segment(image, method, mask, args)
     else:                      return cluster_based_img_seg(image, mask, method, args)
