@@ -6,7 +6,7 @@ from skimage.future import graph
 from sklearn import cluster
 from scipy import interpolate
 from collections import Counter
-from utils import Formatter
+from utils import *
 
 _glob_form = Formatter()
 
@@ -177,7 +177,15 @@ def main_helper(img_path, args):
                 print('\tObtained k-value of', found_k)
             args.kmeans_k = found_k
 
-    img = skimage.io.imread(img_path)
+    #img = skimage.io.imread(img_path)
+    
+    is_color = True
+    if (is_color):
+        img, img_mask = load_image(img_path)
+    else:
+        img,img_mask = convert_im_stack(img_path)
+        print("NOT YET IMPLEMENTED")
+        
     if args.verbose: print('Loaded image', img_path)
     n_channels = img.shape[2]
 
@@ -191,35 +199,35 @@ def main_helper(img_path, args):
         img = skimage.transform.rescale(img, scale=resize_factor_main,
                 anti_aliasing=True, multichannel=True)
         img = utils.conv_to_ubyte(img)
+        if (img_mask is not None):
+            img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main,
+                anti_aliasing=True, multichannel=False)
+            img_mask = utils.conv_to_ubyte(img_mask)
+            img_mask[ img_mask > 0] = 1
+            img_mask[ img_mask <= 0] = 0
         if args.verbose: print("Resized dims:", img.shape)
     
     # Handle masking (alpha transparency)
-    mask = None
-    if n_channels == 4:
-        a = img[:, :, 3]
-        img = img[:, :, :3]
-        mask = a.copy()
-        mask[ a >  128 ] = 1 # 255
-        mask[ a <= 128 ] = 0
+    if (img_mask is not None):
         # Zero out the background
         if not args.ignore_alpha:
-            img *= mask[:,:,np.newaxis]
-
+            img[img_mask <= 0] = 0
+        
     # Default mask: non-transparent alpha channel
-    H, W, C = img.shape
-    if (mask is None) or args.ignore_alpha: 
-        mask = np.ones( (H,W) )
-
+    H, W,_  = img.shape
+    if (img_mask is None) or args.ignore_alpha: 
+        img_mask = np.ones( (H,W) )
+    
     # Gaussian filter if desired
     if args.blur > 1e-8:
         if args.verbose: print("\tBlurring with sigma =", args.blur)
         img = gauss_filter(img, args.blur)
-
+        
     if args.verbose: 
-        print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,C), 
+        print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,n_channels), 
               img.min(0).min(0), img.max(0).max(0))
-        print('\tNum masked values:', H*W - (mask > 0).sum(), "/", H*W)
-
+        print('\tNum masked values:', H*W - (img_mask > 0).sum(), "/", H*W)
+    
     ### Label (cluster/segment) the image ###
     def reorder_label_img(LI):
         if args.verbose: print('\tReordering label image')
@@ -262,7 +270,7 @@ def main_helper(img_path, args):
         def attempt_merge(currLI):
             """ Runs a single merge iteration. Returns None if nothing was merged. """
             print('\tEntering single merge attempt')
-            D = label_img_to_stats(img, mask, currLI)
+            D = label_img_to_stats(img, img_mask, currLI)
             cluster_stats = D['cluster_info']['cluster_stats']
             current_labels = D['cluster_info']['allowed_labels']
             found_failure = False
@@ -317,14 +325,14 @@ def main_helper(img_path, args):
     # Compute labelling -> merge clusters -> reorder labels
     label_image = reorder_label_img( 
                         merge_smaller_clusters( 
-                            label(img, mask, args.labeller, args) 
+                            label(img, img_mask, args.labeller, args) 
                         ) 
                   )
     mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
     # Write mean-cluster-valued image out if desired
     if args.write_mean_segs:
-        int_mask = (mask*255).reshape(H,W,1)
+        int_mask = (img_mask*255).reshape(H,W,1)
         mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
         if not os.path.isdir(args.mean_seg_output_dir):
             os.makedirs(args.mean_seg_output_dir)
@@ -336,7 +344,7 @@ def main_helper(img_path, args):
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
-    img_stats = label_img_to_stats(img, mask, label_image, mean_seg_img, args.verbose)
+    img_stats = label_img_to_stats(img, img_mask, label_image, mean_seg_img, args.verbose)
 
     ### Visualization ###
     if args.display: vis_label_img(img, label_image, args)
