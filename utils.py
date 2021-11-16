@@ -418,8 +418,6 @@ def load_image(im_path):
         image = image[:,:,0:3]
     else:
         im_mask = None    
-    print("img " + str(image.dtype))
-    print("mask " + str(im_mask.dtype))
     return image, im_mask
 
 def convert_im_stack(im_path):

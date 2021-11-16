@@ -298,7 +298,6 @@ def compute_complexities(impath,    # Path to input image file
     running_resize = False
     if abs(resize_factor_main - 1.0) > 1e-4:
         running_resize = True
-        print("allo!")
         if verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
         img = skimage.transform.rescale(img, scale=resize_factor_main, 
                 anti_aliasing=True, multichannel=True)
