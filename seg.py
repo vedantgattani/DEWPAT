@@ -110,6 +110,9 @@ def main():
     else:
         args.kmeans_specifier = None
 
+    # ADD THIS TO ARGS
+    args.is_color = True
+    
     ### Handle images ###
     file_outputs = {}
     if os.path.isdir(args.input):
@@ -131,18 +134,32 @@ def main():
         if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
         with open(args.seg_stats_output_file, "w") as _fh:
             #_fh.write("file,cluster_ind,mu_C_1,mu_C_2,mu_C_3,n_member_pixels,percent_member_pixels\n")
-            _fh.write("image,cluster,R,G,B,H,S,V,frequency,percent\n")
+            # Check first output dict to see if HSV data is included
+            header_line = ['image,cluster,']
+            _,testDict = file_outputs[next(iter(file_outputs))]
+            D = testDict['cluster_info']['cluster_stats'][next(iter(testDict['cluster_info']['cluster_stats']))]
+            mu_keys = [s for s in D.keys() if "mean_value" in s]
+            for i in range(len(mu_keys)):
+                header_line.append('mu_ch'+str(i+1) + ',')
+            if (args.is_color):
+                header_line.append('mu_H,mu_S,mu_V,')
+            header_line.append('frequency,percent\n')
+            _fh.write(''.join(header_line))
+
             for key in file_outputs.keys(): # For each file
                 tmat, D_img = file_outputs[key]
                 Ds = D_img['cluster_info']['cluster_stats']
                 clines = []
                 for cluster_label in Ds.keys(): # For each cluster
                     D = Ds[cluster_label]
-                    clines.append( [ key, D['label_number'], 
-                               D['mean_C1'], D['mean_C2'], D['mean_C3'], 
-                               D['mean_C1_hsv'], D['mean_C2_hsv'], D['mean_C3_hsv'], 
-                               D['n_member_pixels'], 
-                               D['percent_member_pixels'] ] ) # ) )
+                    cline = [key, D['label_number']]
+                    mu_keys = [s for s in D.keys() if "mean_value" in s]
+                    for i in range(len(mu_keys)):
+                        cline.append(D[mu_keys[i]])
+                    if (args.is_color):
+                        cline.extend([D['mean_colour_H'], D['mean_colour_S'], D['mean_colour_V']])
+                    cline.extend([D['n_member_pixels'], D['percent_member_pixels']])
+                    clines.append(cline)
                 clines.sort(key = lambda a: a[-1], reverse = True)
                 clines = [ ",".join( map(str, a) ) for a in clines ]
                 for line in clines: _fh.write(line + '\n')
@@ -177,9 +194,6 @@ def main_helper(img_path, args):
                 print('\tObtained k-value of', found_k)
             args.kmeans_k = found_k
 
-    #img = skimage.io.imread(img_path)
-    
-    args.is_color = True
     if (args.is_color):
         img, img_mask = load_image(img_path)
     else:
@@ -380,9 +394,9 @@ def label_img_to_stats(img, mask, label_img, is_color, verbose=False):
             cluster_stats[label]['mean_value'+str(i+1)] = mean_cluster_value[i]
         if (is_color):
             mean_cluster_value_hsv = rgb2hsv(mean_cluster_value.reshape(1,1,3) / 255.0)[0,0,:]
-            cluster_stats[label]['mean_value_H'] = mean_cluster_value_hsv[0]
-            cluster_stats[label]['mean_value_S'] = mean_cluster_value_hsv[1]
-            cluster_stats[label]['mean_value_V'] = mean_cluster_value_hsv[2]
+            cluster_stats[label]['mean_colour_H'] = mean_cluster_value_hsv[0]
+            cluster_stats[label]['mean_colour_S'] = mean_cluster_value_hsv[1]
+            cluster_stats[label]['mean_colour_V'] = mean_cluster_value_hsv[2]
         cluster_stats[label]['n_member_pixels'] = orig_vals.shape[0]
         cluster_stats[label]['percent_member_pixels'] = orig_vals.shape[0] / n_unmasked
         cluster_stats[label]['mean_colour'] = mean_cluster_value
