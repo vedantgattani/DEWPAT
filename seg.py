@@ -342,18 +342,19 @@ def main_helper(img_path, args):
                             label(img, img_mask, args.labeller, args) 
                         ) 
                   )
-    mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
+    if (args.is_color):
+        mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
-    # Write mean-cluster-valued image out if desired
-    if args.write_mean_segs:
-        int_mask = (img_mask*255).reshape(H,W,1)
-        mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
-        if not os.path.isdir(args.mean_seg_output_dir):
-            os.makedirs(args.mean_seg_output_dir)
-        cfname = os.path.join(args.mean_seg_output_dir, 
+        # Write mean-cluster-valued image out if desired
+        if args.write_mean_segs:
+            int_mask = (img_mask*255).reshape(H,W,1)
+            mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
+            if not os.path.isdir(args.mean_seg_output_dir):
+                os.makedirs(args.mean_seg_output_dir)
+            cfname = os.path.join(args.mean_seg_output_dir, 
                               img_file_basename_extless + ".mean_seg.png")
-        if args.verbose: print('\tSaving mean seg image to', cfname)
-        skimage.io.imsave(fname = cfname, arr = mean_segs4)
+            if args.verbose: print('\tSaving mean seg image to', cfname)
+            skimage.io.imsave(fname = cfname, arr = mean_segs4)
 
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
