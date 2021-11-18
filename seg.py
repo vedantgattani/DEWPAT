@@ -547,28 +547,36 @@ def vis_label_img(image, labels_img, args):
     Visualization method for clustered/segmented image.
     Display segmentation, overlaid segmentation, and mean-value segmentation.
     """
-    # Segmentation
-    pure_segs = color.label2rgb(labels_img)
-    # Overlaid segmentation
-    over_segs = color.label2rgb(labels_img, image=image, 
+    if (not args.is_color):
+        # Segmentation
+        pure_segs = color.label2rgb(labels_img)
+        # Overlaid segmentation
+        over_segs = color.label2rgb(labels_img, image=image, 
                                 alpha=0.25, bg_label=-1, 
                                 bg_color=(0,0,0), image_alpha=1, 
                                 kind='overlay')
-    # Mean value segmentation
-    mean_segs = color.label2rgb(labels_img, image=image, 
+        # Mean value segmentation
+        mean_segs = color.label2rgb(labels_img, image=image, 
                                 alpha=0.25, bg_label=-1, 
                                 bg_color=(0,0,0), image_alpha=1, 
                                 kind='avg')
-    # Show image triplet
-    fig, ax = plt.subplots(nrows=2, ncols=2) #, sharex=True, sharey=True) #, figsize=(25, 8))
-    _q = [(0,0), (0,1), (1,0), (1,1)]
-    _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg']
-    for i, I in enumerate([image, pure_segs, over_segs, mean_segs]):
-        j, k = _q[i]
-        ax[j, k].imshow(I)
-        ax[j, k].axis('off')
-        ax[j, k].set_title(_t[i])
-    plt.tight_layout()
+        # Show image triplet
+        fig, ax = plt.subplots(nrows=2, ncols=2) #, sharex=True, sharey=True) #, figsize=(25, 8))
+        _q = [(0,0), (0,1), (1,0), (1,1)]
+        _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg']
+        for i, I in enumerate([image, pure_segs, over_segs, mean_segs]):
+            j, k = _q[i]
+            ax[j, k].imshow(I)
+            ax[j, k].axis('off')
+            ax[j, k].set_title(_t[i])
+        plt.tight_layout()
+    else:
+        # Segmentation
+        pure_segs = color.label2rgb(labels_img)
+        plt.imshow(pure_segs)
+        plt.title('Segmentation')
+        plt.axis('off')
+        plt.tight_layout()
 
 def transition_matrix(L, normalize, print_M, args):
     """
