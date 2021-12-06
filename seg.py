@@ -195,7 +195,7 @@ def main_helper(img_path, args):
             args.kmeans_k = found_k
 
     if (args.is_color):
-        img, img_mask = load_image(img_path)
+        img, img_mask = load_color_image(img_path)
     else:
         img,img_mask = convert_im_stack(img_path)
         print("NOT YET IMPLEMENTED")

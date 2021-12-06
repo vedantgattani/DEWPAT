@@ -404,7 +404,7 @@ def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_ch
     # R, G, and B are vectors; img is ubyte type.
     return img, R, G, B, orig_mask
 
-def load_image(im_path):
+def load_color_image(im_path):
     
     nChannels = 0
     image = io.imread(im_path)

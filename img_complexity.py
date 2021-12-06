@@ -258,7 +258,8 @@ def compute_complexities(impath,    # Path to input image file
         show_pw_mnt_ptchs = False,  # Show the patches used to compute the moments (for measures 9 and 10)
         show_dwt = False,           # Show the DWT intermediaries
         display_image = False,      # Whether to display the image under consideration
-        verbose=False               # Whether to print verbosely when running
+        verbose=False,               # Whether to print verbosely when running
+        is_mspec=False             # Whether to treat the input as a multispectral image
     ):
     '''
     Computes pixelwise entropy, average filtered entropy, weighted frequency content,
@@ -287,7 +288,7 @@ def compute_complexities(impath,    # Path to input image file
     # Check if color image or mspec image
     is_color = not args.is_mspec
     if is_color:
-        img,img_mask = load_image(impath)
+        img,img_mask = load_color_image(impath)
     else:
         img,img_mask = convert_im_stack(impath)
 
@@ -848,6 +849,7 @@ def compute_complexities(impath,    # Path to input image file
 ### Arguments based on user input ###
 path = args.input # Path to target
 args_d = { "verbose"            : args.verbose,
+           "is_mspec"           : args.is_mspec,
            "use_gradient_image" : args.use_grad,
            "show_fourier_image" : True if args.show_all else args.show_fourier,
            "show_gradient_img"  : True if args.show_all else args.show_gradient_img,
@@ -859,23 +861,45 @@ args_d = { "verbose"            : args.verbose,
 grad_and_orig = args.use_grad_too # Preparations if doing both gradient and original image
 if grad_and_orig: del args_d['use_gradient_image']
 
-### Case 1: Compute complexities over a folder of images ###
-# Meant to output a CSV
-if os.path.isdir(path):
-    print(','.join(S))
+if (args_d['is_mspec']): ### For multispectral images
+    
+    if (False):
+        ### Case 1: Compute complexities over a folder of images ###
+        raise Exception('Multi-image multispectral image processing is not supported yet.')
+    else:
+        ### Case 2: Compute complexity measure on a single image ###
+        usables = ['.tif']
+        usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
+        _checker = lambda k: any( k.endswith(yy) for yy in usables )
+        if (not _checker(path)):
+            raise TypeError('Image format is not supported for multispectral image processing.')
+            
+        compute_complexities(path, complexities_to_use, print_mode='single', **args_d)
+        if grad_and_orig:
+            compute_complexities(path, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
+            
+else: ### For color images
+   
     usables = [ '.jpg', '.png' ]
     usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
     _checker = lambda k: any( k.endswith(yy) for yy in usables )
-    for f in [ f for f in os.listdir(path) if _checker(f) ]:
-        compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
-        if grad_and_orig: # Just did original
-            compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
-                                        use_gradient_image=True, **args_d)
-### Case 2: Compute complexity measure on a single image ###
-else: # Single image case
-    compute_complexities(path, complexities_to_use, print_mode='single', **args_d)
-    if grad_and_orig:
-        compute_complexities(path, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
+    
+    if os.path.isdir(path):
+         ### Case 1: Compute complexities over a folder of images ###
+        print(','.join(S))
+        for f in [ f for f in os.listdir(path) if _checker(f) ]:
+            compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
+            if grad_and_orig: # Just did original
+                compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
+                                            use_gradient_image=True, **args_d)
+    else:
+        ### Case 2: Compute complexity measure on a single image ###
+        if (not _checker(path)):
+            raise TypeError('Image format is not supported for color image processing.')
+            
+        compute_complexities(path, complexities_to_use, print_mode='single', **args_d)
+        if grad_and_orig:
+            compute_complexities(path, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
 
 
 #
