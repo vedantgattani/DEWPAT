@@ -21,8 +21,10 @@ def main():
     parser.add_argument('--labeller', dest='labeller', type=str, default='kmeans',
         choices=['affinity_prop', 'dbscan', 'optics', 'graph_cuts', 'kmeans'],
         help='Labelling (segmentation and/or clustering) algorithm.')
-    parser.add_argument('--verbose', dest='verbose', action='store_true',
+    parser.add_argument('--verbose', dest='verbose', default=False, action='store_true',
         help='Whether to print verbosely while running')
+    parser.add_argument('--mspec', dest='is_mspec', action='store_true',
+        help='Whether to treat the input as a multispectral image')
     ### Image preprocessing
     parser.add_argument('--resize', type=float, default=0.5,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
@@ -109,26 +111,39 @@ def main():
         args.kmeans_specifier = utils.read_csv_full(args.kmeans_k_file_list)
     else:
         args.kmeans_specifier = None
-
-    # ADD THIS TO ARGS
-    args.is_color = True
     
     ### Handle images ###
     file_outputs = {}
-    if os.path.isdir(args.input):
+    if (args.is_mspec): # Multispectral images
+        if (False): # Multi image
+            raise NotImplementedError('Multi-image multispectral image segmentation is not supported yet.')
+        elif os.path.isfile(args.input): # Single image
+            usables = ['.tif']
+            usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
+            _checker = lambda k: any( k.endswith(yy) for yy in usables )
+            if (not _checker(args.input)):
+                raise TypeError('Image format is not supported for multispectral image processing.')
+            file_outputs[args.input] = main_helper(args.input, args)
+        else:
+            raise ValueError('Non-existent target input ' + args.input)            
+    else: # Color images
         usables = [ '.jpg', '.png' ]
         usables = list(set( usables + [ b.upper() for b in usables ] + 
                                       [ b.lower() for b in usables ] ))
         _checker = lambda k: any( k.endswith(yy) for yy in usables )
-        targets = [ os.path.join(args.input, f) 
-                    for f in os.listdir(args.input) if _checker(f) ]
-        for t in targets: 
-            file_outputs[t] = main_helper(t, args)
-    elif os.path.isfile(args.input):
-        file_outputs[args.input] = main_helper(args.input, args)
-    else:
-        raise ValueError('Non-existent target input ' + args.input)
-
+        if os.path.isdir(args.input): ### Multi-images
+            targets = [ os.path.join(args.input, f) 
+                        for f in os.listdir(args.input) if _checker(f) ]
+            for t in targets: 
+                file_outputs[t] = main_helper(t, args)
+        elif os.path.isfile(args.input): ### Single image
+            if (not _checker(args.input)):
+                raise TypeError('Image format is not supported for color image processing.')
+            file_outputs[args.input] = main_helper(args.input, args)
+                      
+        else:
+            raise ValueError('Non-existent target input ' + args.input)
+        
     # Write seg info results
     if not (args.seg_stats_output_file is None):
         if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
@@ -141,7 +156,7 @@ def main():
             mu_keys = [s for s in D.keys() if "mean_value" in s]
             for i in range(len(mu_keys)):
                 header_line.append('mu_ch'+str(i+1) + ',')
-            if (args.is_color):
+            if (not args.is_mspec):
                 header_line.append('mu_H,mu_S,mu_V,')
             header_line.append('frequency,percent\n')
             _fh.write(''.join(header_line))
@@ -156,7 +171,7 @@ def main():
                     mu_keys = [s for s in D.keys() if "mean_value" in s]
                     for i in range(len(mu_keys)):
                         cline.append(D[mu_keys[i]])
-                    if (args.is_color):
+                    if (not args.is_mspec):
                         cline.extend([D['mean_colour_H'], D['mean_colour_S'], D['mean_colour_V']])
                     cline.extend([D['n_member_pixels'], D['percent_member_pixels']])
                     clines.append(cline)
@@ -194,11 +209,11 @@ def main_helper(img_path, args):
                 print('\tObtained k-value of', found_k)
             args.kmeans_k = found_k
 
-    if (args.is_color):
+    if (not args.is_mspec):
         img, img_mask = load_color_image(img_path)
     else:
+        raise NotImplementedError('Multispectral images cannot be loaded in segmentation module yet.')
         img,img_mask = convert_im_stack(img_path)
-        print("NOT YET IMPLEMENTED")
         
     if args.verbose: print('Loaded image', img_path)
     n_channels = img.shape[2]
@@ -284,7 +299,7 @@ def main_helper(img_path, args):
         def attempt_merge(currLI):
             """ Runs a single merge iteration. Returns None if nothing was merged. """
             print('\tEntering single merge attempt')
-            D = label_img_to_stats(img, img_mask, currLI, args.is_color)
+            D = label_img_to_stats(img, img_mask, currLI, (not args.is_mspec))
             cluster_stats = D['cluster_info']['cluster_stats']
             current_labels = D['cluster_info']['allowed_labels']
             found_failure = False
@@ -342,7 +357,7 @@ def main_helper(img_path, args):
                             label(img, img_mask, args.labeller, args) 
                         ) 
                   )
-    if (args.is_color):
+    if (not args.is_mspec):
         mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
         # Write mean-cluster-valued image out if desired
@@ -359,7 +374,7 @@ def main_helper(img_path, args):
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
-    img_stats = label_img_to_stats(img, img_mask, label_image, args.is_color, args.verbose)
+    img_stats = label_img_to_stats(img, img_mask, label_image, (not args.is_mspec), args.verbose)
 
     ### Visualization ###
     if args.display: vis_label_img(img, label_image, args)
@@ -421,7 +436,7 @@ def label(image, mask, method, args):
     Output: Pixelwise labels (M x N), integer
     """
     # Convert to desired colour space
-    if (args.is_color):
+    if (not args.is_mspec):
         if not args.clustering_colour_space == 'rgb':
             if args.verbose: 
                 _K = args.clustering_colour_space 
@@ -548,7 +563,7 @@ def vis_label_img(image, labels_img, args):
     Visualization method for clustered/segmented image.
     Display segmentation, overlaid segmentation, and mean-value segmentation.
     """
-    if (not args.is_color):
+    if (args.is_mspec):
         # Segmentation
         pure_segs = color.label2rgb(labels_img)
         # Overlaid segmentation

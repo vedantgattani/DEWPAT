@@ -865,7 +865,7 @@ if (args_d['is_mspec']): ### For multispectral images
     
     if (False):
         ### Case 1: Compute complexities over a folder of images ###
-        raise Exception('Multi-image multispectral image processing is not supported yet.')
+        raise NotImplementedError('Multi-image multispectral image processing is not supported yet.')
     else:
         ### Case 2: Compute complexity measure on a single image ###
         usables = ['.tif']
