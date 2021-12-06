@@ -27,6 +27,8 @@ parser.add_argument('--ignore_alpha', dest='ignore_alpha', action='store_true',
         help='Whether to ignore the alpha mask channel')
 parser.add_argument('--timing', dest='timing', action='store_true',
         help='Whether to measure and print timing on each function')
+parser.add_argument('--mspec', dest='is_mspec', action='store_true',
+    help='Whether to treat the input as a multispectral image')
 # Preprocessing (resize, blur, greyscale, etc...)
 parser.add_argument('--blur', type=float, default=0.0,
     help='Specify Gaussian blur standard deviation applied to the image')
@@ -282,16 +284,15 @@ def compute_complexities(impath,    # Path to input image file
     _oneparam_affine = lambda x, affp: (x + affp) / affp
     # Read original image
     if verbose: print('Reading image:', impath)
-    # Check if color image or image stack
-    # ADD THIS AS ARGS
-    is_color = True
+    # Check if color image or mspec image
+    is_color = not args.is_mspec
     if is_color:
         img,img_mask = load_image(impath)
     else:
         img,img_mask = convert_im_stack(impath)
-        
+
     n_channels = img.shape[2]
-    
+
     # Downscale image, if desired
     resize_factor_main = args.resize
     assert resize_factor_main > 0.0, "--resize must be positive"
