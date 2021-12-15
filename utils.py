@@ -5,7 +5,7 @@ from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D, axes3d
-from skimage import io
+from skimage import io, img_as_float
 from prob import gaussian_prob_divergence
 
 import glob
@@ -407,7 +407,7 @@ def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_ch
 def load_color_image(im_path):
     
     nChannels = 0
-    image = io.imread(im_path)
+    image = img_as_float(io.imread(im_path))
     
     nChannels = image.shape[2]
     
@@ -417,13 +417,14 @@ def load_color_image(im_path):
         im_mask[ im_mask  > 0 ] = 1
         image = image[:,:,0:3]
     else:
-        im_mask = None    
+        im_mask = None   
+
     return image, im_mask
 
 def load_mspec_image(im_path):
     
     image = io.imread(im_path)
-    im_mask = np.ones(image.shape[0:2]).astype(np.uint8)
+    im_mask = np.ones(image.shape[0:2])
     
     if (np.any(np.isnan(image[:,:,0]))):
         im_mask[np.isnan(image[:,:,0])] = 0
@@ -474,7 +475,7 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
 
     TODO: options for other matrix norms in central moment distance.
     """
-    assert img.max() > 1, "Unexpected pixel scaling encountered"
+    #assert img.max() > 1, "Unexpected pixel scaling encountered"
     if mode != 'central': 
         assert gamma_mu_weight is None and gamma_cov_weight is None
         assert mode in [ 'pw_symmetric_KL',  'pw_W2', 'pw_Hellinger',

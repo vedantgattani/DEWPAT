@@ -308,7 +308,6 @@ def compute_complexities(impath,    # Path to input image file
         if (img_mask is not None):
             img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main, 
                 anti_aliasing=True, multichannel=False)
-            img_mask = conv_to_ubyte(img_mask)
             img_mask[ img_mask > 0] = 1
             img_mask[ img_mask <= 0] = 0
             if (False and is_color):
@@ -328,7 +327,7 @@ def compute_complexities(impath,    # Path to input image file
     if args.ignore_alpha:
         using_alpha_mask = False
         img_mask = None
-   
+    
     # Convert image to greyscale, if desired
     is_scalar = False
     if (is_color):
@@ -392,7 +391,7 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('Computing image entropy ' + ('(alpha masked)' if using_alpha_mask else ''))  
             if using_alpha_mask:
                 def masked_discrete_shannon(channel, first):
-                    channel = np.copy(channel).astype(int)
+                    channel = skimage.img_as_int(np.copy(channel))
                     _fake_pixel_val, alpha_mask_threshold = -1000, 0
                     channel[ img_mask <= alpha_mask_threshold ] = _fake_pixel_val
                     unique_vals, counts = np.unique(channel, return_counts=True)
@@ -628,10 +627,9 @@ def compute_complexities(impath,    # Path to input image file
                 if (emd_visualize and is_color): imdisplay( img_mask, 'Original Mask', True )
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    img_mask_ds = skimage.img_as_ubyte(
-                                        skimage.transform.rescale( 
-                                            skimage.img_as_float(skimage.img_as_ubyte(img_mask*255)), 
-                                            scale=image_rescaling_factor) )
+                    img_mask_ds = skimage.transform.rescale( 
+                                            skimage.img_as_float(skimage.img_as_ubyte(img_mask)), 
+                                            scale=image_rescaling_factor)
                 img_mask_ds[ img_mask_ds >  1e-8 ] = 1
                 img_mask_ds[ img_mask_ds <= 1e-8 ] = 0
                 if (emd_visualize and is_color): imdisplay(img_mask_ds, 'Downscaled mask', True)
@@ -824,16 +822,16 @@ def compute_complexities(impath,    # Path to input image file
         plt.show()
 
     ### Print (single image case) and return output ###
-    complexities_strings = list(map(lambda f: '%.4f' % f, complexities))
+    complexities_strings = list(map(lambda f: '%.4e' % f, complexities))
     impath = impath + (" [GradMag]" if use_gradient_image else "")
     # Print results for a single image
     if print_mode == 'single':
         print(impath + (" (Gradient Magnitude)" if use_gradient_image else ""))
         if args.timing:
-            for name, val, time in zip(S[1:], complexities, timings): print('\t%s: %.4f (time: %.2fs)' % (name,val,time))
+            for name, val, time in zip(S[1:], complexities, timings): print('\t%s: %.4e (time: %.2fs)' % (name,val,time))
             print('Total time elapsed:', sum(timings))
         else:
-            for name, val in zip(S[1:], complexities): print('\t%s: %.4f' % (name,val))
+            for name, val in zip(S[1:], complexities): print('\t%s: %.4e' % (name,val))
     # Print results in the multi-image case
     elif print_mode == 'compact':
         print("%s,%s" % (impath,",".join(complexities_strings)))
@@ -863,14 +861,20 @@ if grad_and_orig: del args_d['use_gradient_image']
 
 if (args_d['is_mspec']): ### For multispectral images
     
-    if (False):
+    usables = ['.tif']
+    usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
+    _checker = lambda k: any( k.endswith(yy) for yy in usables )
+    
+    if os.path.isdir(path):
         ### Case 1: Compute complexities over a folder of images ###
-        raise NotImplementedError('Multi-image multispectral image processing is not supported yet.')
+        print(','.join(S))
+        for f in [ f for f in os.listdir(path) if _checker(f) ]:
+            compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
+            if grad_and_orig: # Just did original
+                compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
+                                            use_gradient_image=True, **args_d)
     else:
         ### Case 2: Compute complexity measure on a single image ###
-        usables = ['.tif']
-        usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
-        _checker = lambda k: any( k.endswith(yy) for yy in usables )
         if (not _checker(path)):
             raise TypeError('Image format is not supported for multispectral image processing.')
             
