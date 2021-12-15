@@ -212,8 +212,8 @@ def main_helper(img_path, args):
     if (not args.is_mspec):
         img, img_mask = load_color_image(img_path)
     else:
+        img, img_mask = load_tif_image(img_path)
         raise NotImplementedError('Multispectral images cannot be loaded in segmentation module yet.')
-        img,img_mask = convert_im_stack(img_path)
         
     if args.verbose: print('Loaded image', img_path)
     n_channels = img.shape[2]

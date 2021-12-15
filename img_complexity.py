@@ -290,8 +290,8 @@ def compute_complexities(impath,    # Path to input image file
     if is_color:
         img,img_mask = load_color_image(impath)
     else:
-        img,img_mask = convert_im_stack(impath)
-
+        img,img_mask = load_mspec_image(impath)
+    
     n_channels = img.shape[2]
 
     # Downscale image, if desired

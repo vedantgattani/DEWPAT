@@ -420,6 +420,16 @@ def load_color_image(im_path):
         im_mask = None    
     return image, im_mask
 
+def load_mspec_image(im_path):
+    
+    image = io.imread(im_path)
+    im_mask = np.ones(image.shape[0:2]).astype(np.uint8)
+    
+    if (np.any(np.isnan(image[:,:,0]))):
+        im_mask[np.isnan(image[:,:,0])] = 0
+    
+    return image,im_mask
+
 def convert_im_stack(im_path):
     # Accepts directory + image  name without suffix and returns a ndarray where each slice of depth corresponds to 1 multispectral image.
     # Returns a mask if any of the relevant images in directory have alpha channel (e.g. png images).
