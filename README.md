@@ -142,15 +142,6 @@ Computes the log-determinant of the global covariance matrix over patches in the
 ```
 Note that trace instead of determinant is used in the greyscale case.
 
-### Mean Pairwise Wasserstein Distance
-
-Measures the average Wasserstein distance (also called the Earth Mover's Distance or EMD) between image patches
-
-```math
-\mathcal{D}_\mathcal{W}(I) = \frac{1}{|P_C|^2} \sum_{p_c\in P_C}\sum_{q_c\in P_C} \mathcal{W}_\rho(p_c,q_c)
-```
-where $`\mathcal{W}_\rho`$ is the Wasserstein distance of order $`\rho`$ and $`P_C`$ is the set of coordinate-appended image patches such that for $`p_c\in P_C`$, each $`\nu\in p_c`$ is a vector $`\nu=(x_\ell, y_\ell, v_{p,1}, v_{p,2}, v_{p,3})`$ where the first two values denote the local coordinates of the pixel within the patch and the latter three are the pixel values at that position.
-
 ### Pairwise Distance between Patch Means
 
 Computes the average pairwise distance between the first moments (means) of the patches across the image:
