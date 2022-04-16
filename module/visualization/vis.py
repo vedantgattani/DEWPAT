@@ -7,6 +7,21 @@ from mpl_toolkits.mplot3d import Axes3D, axes3d
 
 
 def plot_projected_pixels(R, G, B, subsampling=8000, verbose=True):
+    """ Displays a projection of the RGB pixel values into a data-dependent subspace.
+
+    The RGB pixels are dimensionally reduced into 2D using Principal Component Analysis (PCA).
+
+    Takes integer RGB values.
+
+    Args:
+        R: An array of red pixel values.
+        G: An array of green pixel values.
+        B: An array of blue pixel values.
+        subsampling: optional; The number of pixels to be subsampled for the plot.
+          If 'subsampling' is greater than the number of pixels, all pixels will be
+          included. 8000 by default.
+        verbose: Optional; Print verbosely if True. True by default.
+    """
     # Put image pixels into normalized 3D RGB colour space
     print('Generating plot of projected pixels')
     algo = 'pca' # 'tsne', 'pca', 'lle'
@@ -20,13 +35,18 @@ def plot_projected_pixels(R, G, B, subsampling=8000, verbose=True):
     plotDimensionallyReducedVectorsIn2D(P, method=algo, colors=P)
 
 def write_manual_unfolded_1d(folder, output_filename, verbose=True):
-    """
-    Writes a CSV file with the histogram values for each image file in the specified folder.
+    """ Writes a CSV file with the histogram values for each image file in the specified folder.
 
     The first two rows are special:
         The first row shows the titles of columns.
         The second row holds the tuple colors per bin.
     Each row after that holds the bin counts for each image, with the first column holding the filename.
+
+    Args:
+        folder: A path to the directory containing the images. Only images that end with
+          '.png' or '.jpg' are processed.
+        output_filename: The name of the CSV file the histogram values are written to.
+        verbose: Optional; Print verbosely if True. True by default.
     """
     #assert os.path.isdir(folder), "Input " + folder + " must be a directory"
     
@@ -72,12 +92,44 @@ def write_manual_unfolded_1d(folder, output_filename, verbose=True):
         img_histo_vals = image + "," + ",".join([str(hs) for hs in H])
         append_to_file(img_histo_vals)
 
-def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=False, n_search_bins=200, kde_bins=150,
-                            add_kde_curve=True, logscale=False, make_plot=True):
-    """
-    Plots a 1D histogram of colour for the given image, unfolded in a manually defined fashion.
-    Any matplotlib colormap is supported:
-        https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, n_search_bins=200, make_plot=True,
+                            logscale=False, add_kde_curve=True, kde_bins=150, verbose=False):
+    """ Plots a histogram of the RGB pixel values unfolded on a 1D axis.
+    
+    Colors are unfolded using a matplotlib colormap or in a manually defined fashion if
+    'cmap_name_or_index' is 2 or "custom".
+
+    Takes integer RGB values.
+
+    Args:
+        R: An array of red values.
+        G: An array of green values.
+        B: An array of blue values.
+        cmap_name_or_index: Optional; If 'cmap_namne_or_index' is an integer, it is
+          an index into the list ['nipy_spectral', 'gist_ncar', 'custom']. If
+          'cmap_name_or_index' is a string, it represents the name of a colormap.
+          Any matplotlib colormap is supported:
+          https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html. "custom" by
+          default.
+        nbins: Optional; The number of bins in the histogram. 75 by default.
+        n_search_bins: Optional; The number of bins used to partition the search space
+          in the KDTree used to unfold the pixels. 200 by default.
+        make_plot: Optional; If True, the histogram will be displayed. True by default.
+        logscale: Optional; If True, the histogram will be plotted on a log scale.
+          False by default.
+        add_kde_curve: Optional; If True, a curve of the estimated density function
+          will be plotted on top of the histogram. Calculated using Kernel Density
+          Estimation with a Gaussian kernel. True by default.
+        kde_bins: Optional; If 'add_kde_curve' is True, 'kde_bins' is the number of
+          points plotted. 150 by default.
+        verbose: Optional; Print verbosely if True. True by default.
+
+    Returns:
+        A tuple containing 4 elements:
+            1) An array of indices representing the 1D pseudocolor mapped to by each pixel.
+            2) An array of histogram values.
+            3) An array of bin edge values.
+            4) An array of RGB colors corresponding to the edge values in 3).
     """
     assert np.max(R) > 1.0 or np.max(G) > 1.0 or np.max(B) > 1.0, "Unexpected non-integer input received"
     print('Generating plot of manually unfolded 1D colour histogram')
@@ -174,7 +226,13 @@ def plot_manual_unfolded_1d(R, G, B, cmap_name_or_index=2, nbins=75, verbose=Fal
     # Return: (1D pseudocolors per pixel, histogram values per bin, bin edge values, bin edge color values)
     return single_dim_P, n, bins, np.array([C(b)[0:3] for b in bins])
 
-def display_hsv(img, orig_mask, fix_color_interval=True):
+def display_hsv(img, orig_mask):
+    """ Displays the input image and its HSV components on separate plots.
+
+    Args:
+        img: An RGB image.
+        orig_mask: The alpha mask of the image. Can be None.
+    """
     names = ['Original', 'Hue', 'Saturation', 'Value']
     img = img[:,:,0:3] / 255
 
@@ -229,10 +287,20 @@ def display_hsv(img, orig_mask, fix_color_interval=True):
     fig.colorbar(q[2], cax=cbar_ax, orientation='horizontal')
 
 def plot_polar_generic(img, orig_mask, f, apply_mask=True, log_histo=False):
-    """
-    Args are the same as plot_polar_hsv except the colormap function
-        f : [0,1] -> [0,1]^3
-    is used to compute the scalar image used in or processed for the polar plot.
+    """ Displays a polar plot of the image.
+
+    f : [0,1] -> [0,1]^3 is used to compute the scalar image used in or processed
+    for the polar plot.
+
+    Args:
+        img: An RGB image.
+        orig_mask: The alpha mask of the image. Can be None.
+        f: The name of the colormap.
+        apply_mask: Optional; If apply_mask is True and orig_mask
+          is not None, pixels with an alpha value <= 128
+          will be ignored.
+        log_histo: Optional; If log_histo is True, the plot will
+          be displayed on a log scale. False by default.
     """
     f = _to_cm_function(f)
     H, W, C = img.shape
@@ -261,6 +329,14 @@ def _to_cm_function(f):
         return plt.cm.get_cmap(f)
 
 def plot_colour_mapped_scalar_image(img, orig_mask, C):
+    """ Maps the image onto a colormap and displays the image.
+
+    Args:
+        img: An RGB image.
+        orig_mask: The alpha mask of the image. Can be None.
+        C: The name of the colormap. Any matplotlib colormap is supported:
+           https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+    """
     # TODO: option to pass C as a function
     Cname = C
     C = _to_cm_function(C)
@@ -277,6 +353,17 @@ def plot_colour_mapped_scalar_image(img, orig_mask, C):
                  ax=ax, orientation='vertical', fraction=0.1)
 
 def plot_polar_hsv(img, orig_mask, apply_mask=True, log_histo=False):
+    """ Displays a polar plot of the image's HSV hue values.
+
+    Args:
+        img: An RGB image.
+        orig_mask: The alpha mask of the image. Can be None.
+        apply_mask: Optional; If apply_mask is True and orig_mask
+          is not None, pixels with an alpha value <= 128
+          will be ignored. True by default.
+        log_histo: Optional; If log_histo is True, the plot will
+          be displayed on a log scale. False by default.
+    """
     print('Generating polar plot')
     img = img[:,:,0:3] / 255
     hsv_img = skcolor.rgb2hsv(img)
@@ -296,6 +383,18 @@ def plot_polar_hsv(img, orig_mask, apply_mask=True, log_histo=False):
     _generate_polar_plot(H, plt.cm.hsv, xlabels=xticklabels, log_histo=log_histo)
 
 def _generate_polar_plot(H, ff, xlabels=None, log_histo=False, n_bins=20):
+    """ Generates a polar plot of H.
+
+    Args:
+        H: The array of values to plot.
+        ff: A matplotlib.colors.ColorMap instance.
+        xlabels: Optional; A list of strings representing labels
+          on the polar plot. None by default.
+        log_histo: Optional; If log_histo is True, the plot will
+          be displayed on a log scale. False by default.
+        n_bins: Optional; The number of bins in the histogram.
+          20 by default.
+    """
     print("H min/max/mean/samples\n",
         H.min(), H.max(), H.mean(), H[np.random.randint(0,H.shape[0],50)] )
     H = 2 * np.pi * H
@@ -338,7 +437,23 @@ def _generate_polar_plot(H, ff, xlabels=None, log_histo=False, n_bins=20):
         bar.set_alpha(0.99)
 
 def transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True, n_search_bins=200):
-    """ Takes normed image values """
+    """ Maps 3D RGB values to a 1D vector of indices into colormap 'C'.
+
+    Takes normed image values.
+    
+    Args:
+        C: A matplotlib.colors.ColorMap instance or the name of a color map.
+          See https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html
+        R: An array of red values.
+        G: An array of green values.
+        B: An array of blue values.
+        verbose: Optional; Print verbosely if True. True by default.
+        n_search_bins: Optional; The number of intervals used to split the colormap.
+          200 by default.
+    
+    Returns:
+        A 1D vector of indices.
+    """
     if type(C) is str: C = plt.cm.get_cmap(C)
     # Use the colormap to get the bin values
     bin_edge_indices = np.linspace(0.0, 1.0, n_search_bins)
@@ -364,6 +479,14 @@ def transform_rgb_to_cmap_index_vector(C, R, G, B, verbose=True, n_search_bins=2
     return single_dim_P
 
 def display_orig(img, orig_mask, input):
+    """ Displays 'img' and its alpha mask.
+
+    Args:
+        img: The image to be displayed.
+        orig_mask: The alpha mask of the image. Can be None.
+        input: The name of the image to be placed in the
+          title of the plot.
+    """
     imdisplay(img, title="Original Image (%s)" % input)
     if not orig_mask is None:
         fig, ax = plt.subplots()
@@ -375,6 +498,27 @@ def plot_density_proj(R, G, B,
                       point_subsample=1000,
                       density_subsample=20000,
                       nbins=30):
+    """ Plots densities of pixels projected onto pairwise color channels.
+
+    Densities are calculated using Kernel Density Estimation with a
+    Gaussian kernel.
+
+    Takes integer RGB values.
+
+    Args:
+        R: An array of red values.
+        G: An array of green values.
+        B: An array of blue values.
+        verbose: Optional; Print verbosely if True. True by default.
+        point_subsample: Optional; The number of pixels to display on the
+          plot. If greater than number of pixels, all pixels are displayed.
+          1000 by default.
+        density_subsample: Optional; The number of pixels used in the density
+          calculation. If greater than the number of pixels, all pixels
+          are used. 20000 by default.
+        nbins: Optional; The number of bins used to plot the densities.
+          30 by default.
+    """
     print('Generating 3D scatterplot with projected densities')
     n_pixels = len(R)
     if verbose: print("n_pixels", n_pixels)
@@ -433,8 +577,16 @@ def plot_density_proj(R, G, B,
     add_imgs(np.zeros_like(GB_vals[0]), GB_vals[0], GB_vals[1], GB_vals[2])
 
 def plot_3D_rgb(R, G, B, nbins=8):
-    """
-    Displays a 3D interactive histogram of the pixel colors.
+    """ Displays a 3D interactive histogram of the pixel colors.
+
+    Takes integer RGB values.
+
+    Args:
+        R: An array of red values.
+        G: An array of green values.
+        B: An array of blue values.
+        nbins: Optional; The number of bins used in the histogram
+          per axis. A total of nbins**3 bins are used. 8 by default.
     """
     print("Generating 3D RGB histogram")
     rngs= [(0, 255) for _ in range(3)]
@@ -444,8 +596,16 @@ def plot_3D_rgb(R, G, B, nbins=8):
     histo3d(h, e, fig=fig)
 
 def plot_1D_rgb(R,G,B,nbins=40):
-    """
-    Displays a plot with the 1D pixel value distributions per channel.
+    """ Displays a plot with the 1D pixel value distributions per channel.
+
+    Takes integer RGB values.
+
+    Args:
+        R: An array of red values.
+        G: An array of green values.
+        B: An array of blue values.
+        nbins: Optional; The number of bins used in each histogram.
+          40 by default.
     """
     print("Generating 1D RGB histograms")
     cm_names = ("Reds", "Greens", "Blues")
