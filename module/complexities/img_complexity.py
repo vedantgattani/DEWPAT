@@ -165,7 +165,7 @@ def mean_weighted_fourier_coef(img, alpha_mask=None, mode='mean', show_fourier_i
     fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
     fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
     if show_fourier_image:
-        imdisplay(img, 'Altered input image')
+        imdisplay(img, 'Altered input image (for FFT)')
         imdisplay(avg_fourier_image, 'Fourier Transform', colorbar=True, cmap='viridis')
         imdisplay(index_grid_cen, 'Fourier-space distance weights', colorbar=True, cmap='gray')
         # Avoid loss of phase information in order to view image (but note it's ignored in the metric)

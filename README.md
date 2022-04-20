@@ -97,7 +97,7 @@ Computes the weighted average of the Fourier coefficient values, with weights ba
 \;\;\text{and}\;\;
 Z_\gamma = \sum_{\psi_x,\,\psi_y\in \Psi} \gamma(\psi_x,\psi_y),
 ```
-denoting $`\mathfrak{F}[c]`$ as the Fourier transform of the single-channel image $`c`$, $`\Psi`$ as the set of frequency space coordinates, and $`\gamma(x,y) = |x| + |y|`$ as Manhattan distance weights.
+denoting $`\mathfrak{F}[c]`$ as the Fourier transform of the single-channel image $`c`$, $`\Psi`$ as the set of frequency space coordinates, and $`\gamma(x,y) = |x| + |y|`$ as Manhattan distance weights. By default, alpha-masked values are filled with the mean unmasked pixel value.
 
 ### Average Local Patch Covariances
 

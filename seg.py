@@ -22,10 +22,10 @@ def main():
     parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
     ### Image preprocessing
-    parser.add_argument('--resize', type=float, default=0.5,
-        help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
-    parser.add_argument('--blur', type=float, default=1.0,
-        help='Specify Gaussian blur standard deviation applied to the image (default: 1)')
+    parser.add_argument('--resize', type=float, default=1.0,
+        help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 1.0)')
+    parser.add_argument('--blur', type=float, default=0.0,
+        help='Specify Gaussian blur standard deviation applied to the image (default: 0)')
     parser.add_argument('--ignore_alpha', action='store_true', 
         help='Pass to ask the algorithm to ignore the alpha channel (default: False)')
     parser.add_argument('--clustering_colour_space', default='rgb',

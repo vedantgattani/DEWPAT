@@ -63,9 +63,12 @@ def visualize(im, mask, levels=4, mWavelet='haar', show=True):
     # Clip to avoid annoying warning
     visOut = np.clip(visOut, 0, 1)
     imgPlot = plt.imshow(visOut)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xticks([])
+    ax.set_yticks([])
     if show:
         plt.show()
-
     return visOut
 
 def _resize_loc(img, new_size):

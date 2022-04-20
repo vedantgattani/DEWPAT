@@ -11,7 +11,8 @@ from .prob import gaussian_prob_divergence
 ### Visualization helpers ###
 
 # Helper function for displays
-def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax=None):
+def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax=None, 
+              keep_axis_info=False):
     """ Displays the input image 'inim'.
 
     Args:
@@ -43,6 +44,11 @@ def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax
             ax.imshow(inim, cmap=cmap, vmin=vmin, vmax=vmax) )
     plt.title(title)
     if colorbar: fig.colorbar(imm)
+    if not keep_axis_info:
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_xticks([])
+        ax.set_yticks([])
 
 def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None, hide_axes=False):
     """ Displays a set of patches on the same plot.
