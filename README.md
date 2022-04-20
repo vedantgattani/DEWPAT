@@ -250,6 +250,10 @@ python seg.py <target> --kmeans_k_file_list k.csv --verbose \
               --seg_stats_output_file cluster_data.csv
 ```
 
+## Visual Acuity
+
+We provide a simple method of accounting for visual acuity blurring effects, based on [AcuityView](https://github.com/eleanorcaves/AcuityView), induced by the real sizes and distances of the objects and visual systems involved. Call `python preprocess.py --help` for usage help.
+
 ## Acknowledgements
 
 The differential entropy measures utilize the *Non-parametric Entropy Estimation Toolbox* by Greg Ver Steeg.
