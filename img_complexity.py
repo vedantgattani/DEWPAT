@@ -69,10 +69,10 @@ group_c.add_argument('--global_patch_covar',
         dest='global_patch_covar', action='store_const', 
         const=7, default=None,
         help='Whether to use the global patch-wise log-determinant of the covariance of unfolded patches across the image')
-group_c.add_argument('--pairwise_emd',                  
-        dest='pairwise_emd', action='store_const', 
-        const=8, default=None,
-        help='Whether to use the pairwise Wasserstein distance across image patches')
+#group_c.add_argument('--pairwise_emd',                  
+#        dest='pairwise_emd', action='store_const', 
+#        const=8, default=None,
+#        help='Whether to use the pairwise Wasserstein distance across image patches')
 group_c.add_argument('--pairwise_mean_distances',                  
         dest='pairwise_mean_distances', action='store_const', 
         const=9, default=None,
@@ -113,18 +113,18 @@ group_p.add_argument('--local_cov_patch_size', type=int, default=20,
     help='Patch size for local covariance calculations')
 group_p.add_argument('--local_covar_wstep', type=int, default=5,
     help='The step-size (stride) for the local covariance calculation')
-group_p.add_argument('--sinkhorn_emd', action='store_true', 
-    help='Specify to compute the entropy-regularized Sinkhorn approximation, rather than the exact EMD via linear programming')
-group_p.add_argument('--emd_ignore_coords', action='store_true',
-    help='Specify to avoid appending local normalized spatial coordinates to patch elements')
-group_p.add_argument('--squared_euc_metric', action='store_true',
-    help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
-group_p.add_argument('--emd_downscaling', type=float, default=0.2,
-    help='Specify image downscaling factor for EMD calculations')
-group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
-    help='Specify Sinkhorn entropy regularization weight coefficient')
-group_p.add_argument('--emd_coord_scaling', type=float, default=0.2,
-    help='Specify spatial coordinate scaling for EMD calculations, which controls the relative balance between pixel vs image space distance')
+#group_p.add_argument('--sinkhorn_emd', action='store_true', 
+#    help='Specify to compute the entropy-regularized Sinkhorn approximation, rather than the exact EMD via linear programming')
+#group_p.add_argument('--emd_ignore_coords', action='store_true',
+#    help='Specify to avoid appending local normalized spatial coordinates to patch elements')
+#group_p.add_argument('--squared_euc_metric', action='store_true',
+#    help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
+#group_p.add_argument('--emd_downscaling', type=float, default=0.2,
+#    help='Specify image downscaling factor for EMD calculations')
+#group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
+#    help='Specify Sinkhorn entropy regularization weight coefficient')
+#group_p.add_argument('--emd_coord_scaling', type=float, default=0.2,
+#    help='Specify spatial coordinate scaling for EMD calculations, which controls the relative balance between pixel vs image space distance')
 group_p.add_argument('--wt_threshold_percentile', type=float, default=99,
     help='Controls the threshold percentile for the wavelet transform-based method')
 group_p.add_argument('--wt_n_levels', type=int, default=4,
@@ -156,9 +156,9 @@ group_v.add_argument('--show_pw_mnt_ptchs',
 group_v.add_argument('--show_gradient_img', 
         dest='show_gradient_img', action='store_true',
         help='Whether to display the gradient magnitude image')
-group_v.add_argument('--show_emd_intermeds', 
-        dest='emd_visualize', action='store_true',
-        help='Whether to visualize intermediate computations in the EMD method')
+#group_v.add_argument('--show_emd_intermeds', 
+#        dest='emd_visualize', action='store_true',
+#        help='Whether to visualize intermediate computations in the EMD method')
 group_v.add_argument('--show_img',          
         dest='show_img', action='store_true',
         help='Whether to display the input image')
@@ -178,6 +178,16 @@ group_g.add_argument('--use_grad_too',
         help='If specified, computes complexities of both the original and the gradient image')
 #> Final parsing <#
 args = parser.parse_args()
+
+args.pairwise_emd = None
+args.sinkhorn_emd = False
+args.emd_ignore_coords = False
+args.squared_euc_metric = False
+args.emd_downscaling = False
+args.sinkhorn_regularizer = 0.25
+args.emd_coord_scaling = 0.2
+args.show_emd_intermeds = False
+args.emd_visualize = False
 
 # Names of complexity measures
 S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
@@ -200,7 +210,7 @@ input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon,
 assert len(S_all) == len(input_vals)
 if all(map(lambda k: k is None, input_vals)):
     # No metric specified
-    if args.verbose: print('Using all complexity measures except Pairwise EMD')
+    if args.verbose: print('Using all complexity measures')
     EMD_index = 8
     S = S_all.copy() # force S_all to still hold all names (not modified via reference)
     input_vals = list(range(len(input_vals)))
@@ -456,6 +466,7 @@ def compute_complexities(impath,    # Path to input image file
         # is the coordinate scale. If alpha is too large, pixel space distance is ignored;
         # too small, intra-patch spatial distance is ignored.
         if verbose: print('Computing mean inter-patch pairwise Wasserstein distance')
+        # --resize overrides the value of --emd_downscaling
         emd_resize = 1.0 if running_resize else args.emd_downscaling
         emd_args = { 'use_sinkhorn'           : args.sinkhorn_emd,
                      'sinkhorn_gamma'         : args.sinkhorn_regularizer,

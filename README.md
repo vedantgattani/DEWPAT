@@ -44,7 +44,7 @@ There are a few preprocessing options:
 
 - **Greyscale**: passing `--greyscale human` will convert the image to greyscale via channel weightings based on human perceptual weightings, while `--greyscale avg` will use uniform weights (average over channels). Important: note that the determinant of the covariance becomes degenerate (singular) for a scalar image (since the channels have no covariance in this case); therefore *trace* rather than *determinant* is taken in those cases.
 
-- **Resizing**: for instance, passing `--resize 0.5` halves the dimensions of the input image for all complexities. Note that passing `--resize` overrides the value for `--emd_downscaling`, which applies only to the pairwise Wasserstein metric.
+- **Resizing**: for instance, passing `--resize 0.5` halves the dimensions of the input image for all complexities. 
 
 - **Blurring**: passing `--blur 5`, for instance, will low-pass filter the image with a Gaussian of standard deviation 5. Note that resizing happens *before* blurring, so choose the standard deviation with this in mind.
 
@@ -58,11 +58,7 @@ There are a few preprocessing options:
 
   `python img_complexity.py eg_folder --diff_shannon_entropy_patches --weighted_fourier --use_grad_too`
 
-- Compute the pairwise Wasserstein distance among patches for a single input image using the Sinkhorn approximation, while also visualizing the patches used in the computation and printing timing information:
-
-  `python img_complexity.py example.jpg --timing --pairwise_emd --show_emd_intermeds --sinkhorn_emd`
-
-- Compute all measures (except pairwise EMD) on images in `folder`, with each resized to 65% of original size, converted to greyscale (by averaging over channels), and having applied a low-pass Gaussian blurring with $`\sigma=4`$, as well as display the resulting preprocessed images:
+- Compute all measures on images in `folder`, with each resized to 65% of original size, converted to greyscale (by averaging over channels), and having applied a low-pass Gaussian blurring with $`\sigma=4`$, as well as display the resulting preprocessed images:
 
   `python img_complexity.py folder --blur 4 --greyscale avg --resize 0.65 --show_img`
 
