@@ -105,7 +105,7 @@ def channelwise_local_entropies(img, alpha_mask=None, show_locent_image=False, l
 # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
 # incur different frequency effects than on a black bg). 
 @timing_decorator()
-def mean_weighted_fourier_coef(img, show_fourier_image=False, verbose=False, timing=False):
+def mean_weighted_fourier_coef(img, mode='mean', show_fourier_image=False, verbose=False, timing=False):
     r""" Computes the frequency-weighted average of the Fourier coefficient values.
 
     The Fourier coefficients are weighted by the Manhattan distance from the center
@@ -129,6 +129,7 @@ def mean_weighted_fourier_coef(img, show_fourier_image=False, verbose=False, tim
 
     Args:
         img: The input image.
+        mode: Optional; the method of background handling. One of 'std' or 'mean'.
         show_fourier_image: Optional; If True, the Fourier transformed and weighted
           image will be displayed. False by default.
         verbose: Optional; Print verbosely if True. False by default.
@@ -138,9 +139,16 @@ def mean_weighted_fourier_coef(img, show_fourier_image=False, verbose=False, tim
         The weighted average of the Fourier coefficient values.
         If 'timing' is True, the timing of the function is also returned.
     """
+    assert mode in ['std', 'mean'], "Unrecognized Fourier bg handling mode"
     h, w = img.shape[0:2]
     c = h / 2 - 0.5, w / 2 - 0.5
     if verbose: print('Computing Fourier images')
+    #
+    if mode == 'std':
+        if verbose: print('No changes to image before Fourier calculation')
+    elif mode == 'mean': 
+        img = fill_masked_pixels(img, mode = 'mean')
+        if verbose: print('Filling masked pixels with mean unmasked value')
     fourier_images = [ fp.fft2(img[:,:,find]) for find in range(3) ]
     shifted_fourier_images = np.array([ np.fft.fftshift(fourier_image) for fourier_image in fourier_images ])
     shifted_fourier_logmag_image = np.array([ np.log( np.abs(shifted_fourier_image) )
