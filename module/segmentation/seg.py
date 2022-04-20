@@ -1,9 +1,10 @@
 import argparse, sklearn, skimage, numpy as np, numpy.random as npr
 import warnings, matplotlib.pyplot as plt, csv
 from skimage import data, segmentation, color
-from skimage.color import rgb2hsv
+from skimage.color import rgb2hsv, rgb2lab
 from skimage.future import graph
 from sklearn import cluster
+from sklearn.mixture import GaussianMixture
 from scipy import interpolate
 from collections import Counter
 from ..utils import Formatter, gaussian_blur
@@ -56,8 +57,11 @@ def k_dependent_smaller_clusters_merging_threshold(k, kdep_param=0.05):
     T0 = kdep_param
     T  = T0 / (k - 1)
     return T
-def merge_smaller_clusters(img, mask, LI, merge_small_clusters_method=None, small_cluster_merging_kdep_param=0.05,
-                           fixed_cluster_size_merging_threshold=0.05, small_cluster_merging_dynamic_k=False, verbose=False):
+
+def merge_smaller_clusters(img, mask, LI, merge_small_clusters_method=None, 
+                           small_cluster_merging_kdep_param=0.05,
+                           fixed_cluster_size_merging_threshold=0.05, 
+                           small_cluster_merging_dynamic_k=False, verbose=False):
     """ Merges clusters with sizes below a specified threshold.
 
     The function iteratively attempts to merge the smallest cluster until it is no longer
@@ -103,7 +107,8 @@ def merge_smaller_clusters(img, mask, LI, merge_small_clusters_method=None, smal
     elif merge_small_clusters_method == 'k_dependent':
         k_initial = len(labels_initial)
         if -1 in labels_initial: k_initial -= 1
-        thresh = k_dependent_smaller_clusters_merging_threshold(k_initial, kdep_param=small_cluster_merging_kdep_param)
+        thresh = k_dependent_smaller_clusters_merging_threshold(k_initial, 
+                                kdep_param=small_cluster_merging_kdep_param)
     elif merge_small_clusters_method == 'fixed':
         thresh = fixed_cluster_size_merging_threshold
     else: raise ValueError('Unknown merging method ' + str(merge_small_clusters_method))
@@ -166,7 +171,8 @@ def merge_smaller_clusters(img, mask, LI, merge_small_clusters_method=None, smal
     if verbose: print('\tFinished merging attempts')
     return currLI
 
-def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
+def label_img_to_stats(img, mask, label_img, mean_seg_img=None, medians=None,
+                       modes=None, gmm_means=None, gmm_weights=None, verbose=False):
     """ Returns a dictionary of 'label_img' and initial image stats.
 
     Includes a subdictionary of information per label set (cluster).
@@ -186,14 +192,20 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
     if mean_seg_img is None:
         mean_seg_img = color.label2rgb(label_img, image = img, bg_label = -1, 
                                        bg_color = (0.0, 0.0, 0.0), kind = 'avg')
+    if medians is None:
+        _, medians = median_label2rgb(img, label_img)
+    if modes is None:
+        _, modes, gmm_means, gmm_weights = gmm_label2rgb(img, label_img)
     # 
-    H, W, C = img.shape
+    H, W, C        = img.shape
     allowed_labels = list(set(label_img.flatten().astype(int).tolist()))
-    n_labels = len(allowed_labels)
-    n_masked = (label_img == -1).sum()
-    n_unmasked = (H*W) - n_masked
-    cluster_info = { 'n_labels' : n_labels, 'allowed_labels' : allowed_labels }
-    cluster_stats = {}
+    n_labels       = len(allowed_labels)
+    n_masked       = (label_img == -1).sum()
+    n_unmasked     = (H*W) - n_masked
+    cluster_info   = { 'n_labels' : n_labels, 'allowed_labels' : allowed_labels }
+    cluster_stats  = {}
+    median_cluster_stats = {}
+    mode_cluster_stats   = {}
     for label in allowed_labels:
         if label == -1: continue # Ignore bg
         bool_indexer = np.logical_and(mask != 0, label_img == label)
@@ -202,6 +214,7 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
         mean_cluster_value = orig_vals.mean(0)
         premeaned_val = mean_vals.mean(0)
         premeaned_val_hsv = rgb2hsv(premeaned_val.reshape(1,1,3) / 255.0)[0,0,:]
+        premeaned_val_lab = rgb2lab(premeaned_val.reshape(1,1,3) / 255.0)[0,0,:]
         cluster_stats[label] = {
             'label_number'          : label,
             'mean_C1'               : mean_cluster_value[0], # R (floats)
@@ -210,11 +223,72 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
             'mean_C1_hsv'           : premeaned_val_hsv[0],  # H in [0,1], multiply by 360 to get degrees
             'mean_C2_hsv'           : premeaned_val_hsv[1],  # S
             'mean_C3_hsv'           : premeaned_val_hsv[2],  # V
+            'mean_C1_lab'           : premeaned_val_lab[0],  # L (floats)
+            'mean_C2_lab'           : premeaned_val_lab[1],  # A
+            'mean_C3_lab'           : premeaned_val_lab[2],  # B
             'n_member_pixels'       : orig_vals.shape[0],
             'percent_member_pixels' : orig_vals.shape[0] / n_unmasked,
             'mean_colour'           : premeaned_val, # Integer array
         }
+
+        median_cluster_value = medians[label-1]
+        if verbose: print(label, 'Median cluster value', median_cluster_value)
+        median_hsv = rgb2hsv(median_cluster_value.reshape(1,1,3) / 255.0)[0,0,:]
+        median_lab = rgb2lab(median_cluster_value.reshape(1,1,3) / 255.0)[0,0,:]
+        median_cluster_stats[label] = {
+            'label_number'            : label,
+            'median_C1'               : median_cluster_value[0], # R (ints)
+            'median_C2'               : median_cluster_value[1], # G
+            'median_C3'               : median_cluster_value[2], # B
+            'median_C1_hsv'           : median_hsv[0],  # H in [0,1], multiply by 360 to get degrees
+            'median_C2_hsv'           : median_hsv[1],  # S
+            'median_C3_hsv'           : median_hsv[2],  # V
+            'median_C1_lab'           : median_lab[0],  # L (floats)
+            'median_C2_lab'           : median_lab[1],  # A
+            'median_C3_lab'           : median_lab[2],  # B
+            'n_member_pixels'       : orig_vals.shape[0],
+            'percent_member_pixels' : orig_vals.shape[0] / n_unmasked
+        }
+
+        mode_cluster_stats[label] = {
+            'label_number'          : label,
+            'n_member_pixels'       : orig_vals.shape[0],
+            'percent_member_pixels' : orig_vals.shape[0] / n_unmasked
+        }
+
+        cluster_modes = modes[label-1]
+        cluster_means = gmm_means[label-1]
+        cluster_weights = gmm_weights[label-1]
+        # get RGB, HSV, LAB for each mode
+        for i in range(1, len(cluster_modes)+1):
+            mode = cluster_modes[i-1]
+            mean = cluster_means[i-1]
+            weight = cluster_weights[i-1]
+            if verbose: print(label, f'Cluster mode {i} value', mode)
+            mode_hsv = rgb2hsv(mode.reshape(1,1,3) / 255.0)[0,0,:]
+            mode_lab = rgb2lab(mode.reshape(1,1,3) / 255.0)[0,0,:]
+
+            _mode_stats = {
+                f'mode{i}_C1'       :  mode[0],     # R (ints)
+                f'mode{i}_C2'       :  mode[1],     # G
+                f'mode{i}_C3'       :  mode[2],     # B
+                f'mode{i}_C1_hsv'   :  mode_hsv[0], # H in [0,1], multiply by 360 to get degrees
+                f'mode{i}_C2_hsv'   :  mode_hsv[1], # S
+                f'mode{i}_C3_hsv'   :  mode_hsv[2], # V
+                f'mode{i}_C1_lab'   :  mode_lab[0], # L (floats)
+                f'mode{i}_C2_lab'   :  mode_lab[1], # A
+                f'mode{i}_C3_lab'   :  mode_lab[2], # B
+                f'gmm{i}_C1_mean'   :  mean[0],     # GMM component mean R (float)
+                f'gmm{i}_C2_mean'   :  mean[1],     # G
+                f'gmm{i}_C3_mean'   :  mean[2],     # B
+                f'gmm{i}_weight'    :  weight       # GMM component weight (float)
+            }
+
+            mode_cluster_stats[label] = {**mode_cluster_stats[label], **_mode_stats}
+    
     cluster_info['cluster_stats'] = cluster_stats
+    cluster_info['median_cluster_stats'] = median_cluster_stats
+    cluster_info['mode_cluster_stats'] = mode_cluster_stats
     D = { 'H'                 : H,
           'W'                 : W,
           'total_pixels'      : H*W,
@@ -228,8 +302,10 @@ def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
         _glob_form.print_dict(D)
     return D
 
-def label(image, mask, method, clustering_colour_space='rgb', dbscan_eps=1.0, dbscan_min_neb_size=20, kmeans_k=None,
-          kmeans_auto_bounds='2,6', kmeans_auto_crit='davies_bouldin', gc_compactness=10.0, gc_n_segments=300,
+def label(image, mask, method, clustering_colour_space='rgb', dbscan_eps=1.0, 
+          dbscan_min_neb_size=20, kmeans_k=None,
+          kmeans_auto_bounds='2,6', kmeans_auto_crit='davies_bouldin', 
+          gc_compactness=10.0, gc_n_segments=300,
           gc_slic_sigma=0.0,verbose=False):
     """ Segments the image using the specified method.
 
@@ -300,15 +376,19 @@ def label(image, mask, method, clustering_colour_space='rgb', dbscan_eps=1.0, db
             from skimage.color import rgb2lab # Bounds: [0,100], [-128,128], [-128,128]
             image = np.rint( rgb2lab(image/255.0) ).astype(int) 
     # Perform clustering
-    if method == 'graph_cuts': return segment(image, method, mask, gc_compactness=gc_compactness, gc_n_segments=gc_n_segments,
+    if method == 'graph_cuts': return segment(image, method, mask, 
+                                              gc_compactness=gc_compactness, 
+                                              gc_n_segments=gc_n_segments,
                                               gc_slic_sigma=gc_slic_sigma)
     else:                      return cluster_based_img_seg(image, mask, method, dbscan_eps=dbscan_eps,
-                                                            dbscan_min_neb_size=dbscan_min_neb_size, kmeans_k=kmeans_k,
+                                                            dbscan_min_neb_size=dbscan_min_neb_size, 
+                                                            kmeans_k=kmeans_k,
                                                             kmeans_auto_bounds=kmeans_auto_bounds,
-                                                            kmeans_auto_crit=kmeans_auto_crit, verbose=verbose)
+                                                            kmeans_auto_crit=kmeans_auto_crit, 
+                                                            verbose=verbose)
 
 def cluster_vecs(X, method, dbscan_eps=1.0, dbscan_min_neb_size=20, kmeans_k=None, kmeans_auto_bounds='2,6',
-                 kmeans_auto_crit='davies_bouldin', verbose=False):
+                 verbose=False, kmeans_auto_crit='davies_bouldin'):
     """ Clusters a vector of pixels using the specified method.
 
     The possible methods are:
@@ -485,7 +565,169 @@ def reform_label_image(vec_labels, mask):
     assert not np.isnan(label_image).any() 
     return label_image
 
-def vis_label_img(image, labels_img):
+
+def _cluster_median(cluster):
+    """ Returns the pixel with the minimum L1 distance sum to all other pixels in the cluster.
+
+    Args:
+        cluster: A 1D array of pixels.
+    """
+    # efficient O(n log n) implementation
+    # https://stackoverflow.com/a/12905913
+    total_dist = np.zeros(len(cluster))
+    C = cluster[0].shape[0]
+
+    # TODO: consider vectorizing
+    for channel in range(C):
+        values = cluster[:,channel]
+        ind = np.argsort(values)
+
+        n = len(ind)
+        dist = np.zeros(n)
+
+        # The distance between any index j < i and i can be expressed as the distance from j to
+        # i-1 plus the distance from i-1 to i. Let D(i) denote the total distance between all
+        # j < i and i (the total distance to every point left of i). Using the fact above,
+        # D(i) can be computed by taking D(i-1) and adding values[i] - values[i-1] (the distance
+        # from i-1 to i) for each index 0,1,...,i-1.
+        _sum = 0
+        for i in range(1, n):
+            _sum += (values[ind[i]] - values[ind[i-1]])*i
+            # _sum is now the total distance from point i to all j < i
+            dist[ind[i]] += _sum
+
+        # Repeat process above but for distance between i and every point to the right of it.
+        _sum = 0
+        for i in range(n-2, -1, -1):
+            _sum += (values[ind[i+1]] - values[ind[i]])*(n-i-1)
+            # _sum is now the total distance from point i to all j > i
+            dist[ind[i]] += _sum
+
+        total_dist += dist
+
+    return cluster[np.argmin(total_dist)]
+
+
+def median_label2rgb(image, labels_img, bg_color=(0,0,0)):
+    """ Paint the clusters with its median pixel value.
+
+    Args:
+        image: The image object.
+        labels_img: The labels given to 'image' after segmentation.
+        bg_color: Optional; the RGB color given to the background labels.
+    
+    Returns:
+        The painted image and a list of median pixel values per cluster.
+    """
+    allowed_labels = list(set(labels_img.flatten().astype(int).tolist()))
+
+    cluster_medians = []
+    H, W = image.shape[:2]
+    for label in allowed_labels:
+        if label == -1: continue
+        cluster = np.array([image[i,j] for i in range(H) for j in range(W) if labels_img[i,j] == label])
+        cluster_medians.append(_cluster_median(cluster))
+    
+    return _paint_img(image, labels_img, cluster_medians, bg_color=bg_color), cluster_medians
+
+
+def _cluster_gmm(cluster, n_components=3):
+    """ Fits pixels in 'cluster' to GMM and returns the set of modes for the cluster.
+
+    The modes of the cluster are determined by replacing the means of the GMM
+    components with the nearest pixel in the cluster (L1 distance).
+
+    Args:
+        cluster: A 1D array of pixels.
+        n_components: Optional; the number of components in the GMM.
+    
+    Returns:
+        A tuple containing
+            1) A list of the mode pixels.
+            2) A list of the components' mean pixel values.
+            3) A list of the components' weights.
+        Each list has length 'n_components' and is sorted by non-increasing weight.
+    """
+    gmm_model = GaussianMixture(n_components=n_components)
+    gmm_model.fit(cluster)
+
+    # sort means by weight
+    sorted_means = [m for _,m in sorted(zip(gmm_model.weights_,gmm_model.means_), reverse=True)]
+
+    # find nearest pixel that actually exists in the cluster and replace
+    modes = [0 for _ in range(len(sorted_means))]
+    for i in range(len(sorted_means)):
+        ind = np.argmin([np.linalg.norm(np.array(sorted_means[i])-p, ord=1) for p in cluster])
+        modes[i] = cluster[ind]
+    
+    sorted_weights = sorted(gmm_model.weights_, reverse=True)
+
+    return modes, sorted_means, sorted_weights
+
+
+def gmm_label2rgb(image, labels_img, bg_color=(0,0,0), n_components=3):
+    """ Fits each cluster to a GMM and paints it with the mode pixel value.
+
+    The mode is determined by using the mean of the heaviest GMM mixture
+    component for the cluster.
+
+    Args:
+        image: The image object.
+        labels_img: The labels given to 'image' after segmentation.
+        bg_color: Optional; the RGB color given to the background labels.
+        n_components: Optional; the number of components in the GMM.
+
+    Returns:
+        A tuple containing
+            1) The painted image.
+            2) A list of GMM modes per cluster.
+            3) A list of GMM means per cluster.
+            4) A list of GMM component weights per cluster.
+    """
+    allowed_labels = list(set(labels_img.flatten().astype(int).tolist()))
+
+    gmm_modes = []
+    gmm_means = []
+    gmm_weights = []
+    H, W = image.shape[:2]
+    for label in allowed_labels:
+        if label == -1: continue
+        cluster = np.array([image[i,j] for i in range(H) for j in range(W) if labels_img[i,j] == label])
+        gmm = _cluster_gmm(cluster, n_components=n_components)
+        gmm_modes.append(gmm[0])
+        gmm_means.append(gmm[1])
+        gmm_weights.append(gmm[2])
+
+    # heaviest mode per cluster
+    h_colors = [m[0] for m in gmm_modes]
+    return _paint_img(image, labels_img, h_colors, bg_color=bg_color), gmm_modes, gmm_means, gmm_weights
+
+
+def _paint_img(image, labels_img, label_colors, bg_color=(0,0,0)):
+    """ Paints the segmented 'labels_img' using the 'label_colors'.
+
+    Args:
+        image: The image object.
+        labels_img: The labels given to 'image' after segmentation.
+        label_colors: A list of pixels assigned to each label.
+        bg_color: Optional; the RGB color given to the background labels.
+
+    Returns:
+        The painted image.
+    """
+    bg_color = np.array(bg_color, dtype=np.uint8)
+    painted_img = np.zeros(image.shape, dtype=np.uint8)
+
+    H, W = image.shape[:2]
+    for i in range(H):
+        for j in range(W):
+            label = labels_img[i,j]
+            painted_img[i,j] = label_colors[label-1] if label != -1 else bg_color
+
+    return painted_img
+
+
+def vis_label_img(image, labels_img, median_seg, mode_seg):
     """ Displays the segmented image.
 
     Displays the original image, segmentation, overlaid segmentation,
@@ -508,10 +750,10 @@ def vis_label_img(image, labels_img):
                                 bg_color=(0,0,0), image_alpha=1, 
                                 kind='avg')
     # Show image triplet
-    fig, ax = plt.subplots(nrows=2, ncols=2) #, sharex=True, sharey=True) #, figsize=(25, 8))
-    _q = [(0,0), (0,1), (1,0), (1,1)]
-    _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg']
-    for i, I in enumerate([image, pure_segs, over_segs, mean_segs]):
+    fig, ax = plt.subplots(nrows=2, ncols=3) #, sharex=True, sharey=True) #, figsize=(25, 8))
+    _q = [(0,0), (0,1), (1,0), (1,1), (0,2), (1,2)]
+    _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg', 'Median Seg', 'Mode Seg']
+    for i, I in enumerate([image, pure_segs, over_segs, mean_segs, median_seg, mode_seg]):
         j, k = _q[i]
         ax[j, k].imshow(I)
         ax[j, k].axis('off')

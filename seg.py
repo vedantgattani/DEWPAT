@@ -42,8 +42,13 @@ def main():
     parser.add_argument('--small_cluster_merging_dynamic_k', action='store_true',
         help='If using k_dependent merging threshold, specify to recompute the threshold after every merge')
     ### Output statistics files
-    parser.add_argument('--seg_stats_output_file', default=None,
-        help='Specifies output file to which segment statistics should be written')
+    parser.add_argument('--seg_mean_stats_output_file', default=None,
+        help='Specifies output file to which segment statistics with cluster-mean values should be written')
+    parser.add_argument('--seg_median_stats_output_file', default=None,
+        help='Specifies output file to which segment statistics with cluster-median values should be written')
+    parser.add_argument('--seg_mode_stats_output_file', default=None,
+        help='Specifies output file to which segment statistics with cluster-mode values should be written.' +
+              ' The modes are computed using GMM mixture component means.')
     parser.add_argument('--cluster_number_file', default=None,
         help='Specifies output file to which the number of estimated clusters per image should be written')
     ### Output image files
@@ -51,6 +56,16 @@ def main():
         help='Writes the segmented image(s) with cluster-mean values. Requires mean_seg_output_dir.')
     parser.add_argument('--mean_seg_output_dir', default=None,
         help='Specifies the folder to which saved mean segment images must be written')
+    parser.add_argument('--write_median_segs', action='store_true', dest='write_median_segs',
+        help='Writes the segmented image(s) with cluster-median values. Requires median_seg_output_dir.')
+    parser.add_argument('--median_seg_output_dir', default=None,
+        help='Specifies the folder to which saved median segment images must be written')
+    parser.add_argument('--write_mode_segs', action='store_true', dest='write_mode_segs',
+        help='Writes the segmented image(s) with cluster-mode values. Requires mode_seg_output_dir.' +
+              ' The modes are computed using GMM mixture component means.')
+    parser.add_argument('--mode_seg_output_dir', default=None,
+        help='Specifies the folder to which saved mode segment images must be written' +
+              ' The modes are computed using GMM mixture component means.')
     ### Labeller params
     group_g = parser.add_argument_group('Labeller parameters')
     #-- DBSCAN options
@@ -125,11 +140,11 @@ def main():
         raise ValueError('Non-existent target input ' + args.input)
 
     # Write seg info results
-    if not (args.seg_stats_output_file is None):
-        if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
-        with open(args.seg_stats_output_file, "w") as _fh:
+    if not (args.seg_mean_stats_output_file is None):
+        if args.verbose: print('Writing seg file to', args.seg_mean_stats_output_file)
+        with open(args.seg_mean_stats_output_file, "w") as _fh:
             #_fh.write("file,cluster_ind,mu_C_1,mu_C_2,mu_C_3,n_member_pixels,percent_member_pixels\n")
-            _fh.write("image,cluster,R,G,B,H,S,V,frequency,percent\n")
+            _fh.write("image,cluster,RGB_R,RGB_G,RGB_B,HSV_H,HSV_S,HSV_V,LAB_L,LAB_A,LAB_B,frequency,percent\n")
             for key in file_outputs.keys(): # For each file
                 tmat, D_img = file_outputs[key]
                 Ds = D_img['cluster_info']['cluster_stats']
@@ -139,11 +154,65 @@ def main():
                     clines.append( [ key, D['label_number'], 
                                D['mean_C1'], D['mean_C2'], D['mean_C3'], 
                                D['mean_C1_hsv'], D['mean_C2_hsv'], D['mean_C3_hsv'], 
+                               D['mean_C1_lab'], D['mean_C2_lab'], D['mean_C3_lab'],
                                D['n_member_pixels'], 
                                D['percent_member_pixels'] ] ) # ) )
                 clines.sort(key = lambda a: a[-1], reverse = True)
                 clines = [ ",".join( map(str, a) ) for a in clines ]
                 for line in clines: _fh.write(line + '\n')
+
+    # Write median seg info results
+    if not (args.seg_median_stats_output_file is None):
+        if args.verbose: print('Writing median seg file to', args.seg_median_stats_output_file)
+        with open(args.seg_median_stats_output_file, "w") as _fh:
+            _fh.write("image,cluster,RGB_R,RGB_G,RGB_B,HSV_H,HSV_S,HSV_V,LAB_L,LAB_A,LAB_B,frequency,percent\n")
+            for key in file_outputs.keys(): # For each file
+                tmat, D_img = file_outputs[key]
+                Ds = D_img['cluster_info']['median_cluster_stats']
+                clines = []
+                for cluster_label in Ds.keys(): # For each cluster
+                    D = Ds[cluster_label]
+                    clines.append( [ key, D['label_number'], 
+                               D['median_C1'], D['median_C2'], D['median_C3'], 
+                               D['median_C1_hsv'], D['median_C2_hsv'], D['median_C3_hsv'], 
+                               D['median_C1_lab'], D['median_C2_lab'], D['median_C3_lab'],
+                               D['n_member_pixels'], 
+                               D['percent_member_pixels'] ] ) # ) )
+                clines.sort(key = lambda a: a[-1], reverse = True)
+                clines = [ ",".join( map(str, a) ) for a in clines ]
+                for line in clines: _fh.write(line + '\n')
+
+    # Write mode seg info results
+    _N = 3 # number of components in GMM
+    if not (args.seg_mode_stats_output_file is None):
+        if args.verbose: print('Writing mode seg file to', args.seg_mode_stats_output_file)
+        with open(args.seg_mode_stats_output_file, "w") as _fh:
+            _fh.write("image,cluster,")
+            for i in range(1, _N+1):
+                _fh.write((f'gmm{i}_mean_R,gmm{i}_mean_G,gmm{i}_mean_B,gmm{i}_weight,'
+                f'mode{i}_RGB_R,mode{i}_RGB_G,mode{i}_RGB_B,mode{i}_HSV_H,'
+                f'mode{i}_HSV_S,mode{i}_HSV_V,mode{i}_LAB_L,mode{i}_LAB_A,mode{i}_LAB_B,'))
+            _fh.write(",frequency,percent\n")
+            for key in file_outputs.keys(): # For each file
+                tmat, D_img = file_outputs[key]
+                Ds = D_img['cluster_info']['mode_cluster_stats']
+                clines = []
+                for cluster_label in Ds.keys(): # For each cluster
+                    D = Ds[cluster_label]
+                    _row = [key, D['label_number']]
+                    for i in range(1, _N+1): # For each mode
+                        _row.extend([
+                            D[f'gmm{i}_C1_mean'], D[f'gmm{i}_C2_mean'], D[f'gmm{i}_C3_mean'], D[f'gmm{i}_weight'],
+                            D[f'mode{i}_C1'], D[f'mode{i}_C2'], D[f'mode{i}_C3'],
+                            D[f'mode{i}_C1_hsv'], D[f'mode{i}_C2_hsv'], D[f'mode{i}_C3_hsv'],
+                            D[f'mode{i}_C1_lab'], D[f'mode{i}_C2_lab'], D[f'mode{i}_C3_lab']
+                        ])
+                    _row.extend([D['n_member_pixels'], D['percent_member_pixels']])
+                    clines.append(_row)
+                clines.sort(key = lambda a: a[-1], reverse = True)
+                clines = [ ",".join( map(str, a) ) for a in clines ]
+                for line in clines: _fh.write(line + '\n')
+    
     # Write csv with number of clusters per image
     # The background label is NOT counted
     if not (args.cluster_number_file is None):
@@ -234,24 +303,34 @@ def main_helper(img_path, args):
                                     verbose=args.verbose)
     mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
-    # Write mean-cluster-valued image out if desired
-    if args.write_mean_segs:
-        int_mask = (mask*255).reshape(H,W,1)
-        mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
-        if not os.path.isdir(args.mean_seg_output_dir):
-            os.makedirs(args.mean_seg_output_dir)
-        cfname = os.path.join(args.mean_seg_output_dir, 
-                              img_file_basename_extless + ".mean_seg.png")
-        if args.verbose: print('\tSaving mean seg image to', cfname)
-        skimage.io.imsave(fname = cfname, arr = mean_segs4)
+    median_seg_img, medians = median_label2rgb(img, label_image)
+    mode_seg_img, modes, gmm_means, gmm_weights = gmm_label2rgb(img, label_image)
+
+    _write_img = [args.write_mean_segs, args.write_median_segs, args.write_mode_segs]
+    _img = [mean_seg_img, median_seg_img, mode_seg_img]
+    _output_dir = [args.mean_seg_output_dir, args.median_seg_output_dir, args.mode_seg_output_dir]
+    _type = ['mean', 'median', 'mode']
+
+    # Write mean/median/mode-cluster-valued image out if desired
+    for i in range(len(_write_img)):
+        if _write_img[i]:
+            int_mask = (mask*255).reshape(H,W,1)
+            segs4 = np.concatenate( (_img[i], int_mask), axis = 2 )
+            if not os.path.isdir(_output_dir[i]):
+                os.makedirs(_output_dir[i])
+            cfname = os.path.join(_output_dir[i], 
+                                img_file_basename_extless + f".{_type[i]}_seg.png")
+            if args.verbose: print(f'\tSaving {_type[i]} seg image to', cfname)
+            skimage.io.imsave(fname = cfname, arr = segs4)
 
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), keep_bg=args.keep_bg, verbose=args.verbose )
-    img_stats = label_img_to_stats(img, mask, label_image, mean_seg_img, args.verbose)
+    img_stats = label_img_to_stats(img, mask, label_image, mean_seg_img, medians=medians, modes=modes,
+                                   gmm_means=gmm_means, gmm_weights=gmm_weights, verbose=args.verbose)
 
     ### Visualization ###
-    if args.display: vis_label_img(img, label_image)
+    if args.display: vis_label_img(img, label_image, median_seg_img, mode_seg_img)
     plt.show()
 
     if args.verbose: print('Finished processing', img_path)

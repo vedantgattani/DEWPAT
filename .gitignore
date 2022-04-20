@@ -22,5 +22,6 @@ __pycache__/
 
 # Text data
 *.json
+*.txt
 
 .DS_Store
