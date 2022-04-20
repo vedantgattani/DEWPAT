@@ -958,13 +958,16 @@ class Formatter(object):
 
 # 
 
-def fill_masked_pixels(I, mode = 'mean'):
+def fill_masked_pixels(I, mask, mode = 'mean', mask_thresh = 0.5, verbose = False):
     if mode == 'mean':
+        #assert len(mask.shape) == 2
+        #assert mask.max() <= 1.0+1e-8 and mask.min() >= -1e-8
         # Last channel is the mask -> 1 means it is a valid pixel
-        mask       = (I[:, :, -1] > 0.5).astype(np.float64)[:, :, np.newaxis]
-        pixel_vals = I[:, :, 0:-1] # Unmasked pixels
-        avg        = pixel_vals.mean(0).mean(0)[np.newaxis, np.newaxis, :]
-        replaced   = mask * pixel_vals + (1.0 - mask) * avg
+        bool_mask  = mask > mask_thresh
+        maskf      = mask[:, :, np.newaxis]
+        pixel_vals = I[bool_mask] # Unmasked pixels
+        avg        = pixel_vals.mean(0)[np.newaxis, np.newaxis, :]
+        replaced   = (maskf * I + (1.0 - maskf) * avg).astype(np.uint8)
         return replaced
     else:
         raise ValueError('Unknown mode ' + str(mode))

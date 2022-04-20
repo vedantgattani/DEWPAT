@@ -392,7 +392,8 @@ def compute_complexities(impath,    # Path to input image file
     # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
     # incur different frequency effects than on a black bg). 
     if 2 in complexities_to_use:
-        add_new(mean_weighted_fourier_coef(img, show_fourier_image=show_fourier_image, verbose=verbose, timing=args.timing), 2)
+        add_new(mean_weighted_fourier_coef(img, alpha_mask=alpha_mask, show_fourier_image=show_fourier_image, 
+                                           verbose=verbose, timing=args.timing), 2)
 
     #--------------------------------------------------------------------------------------------------------------------#
 
