@@ -861,7 +861,7 @@ if grad_and_orig: del args_d['use_gradient_image']
 
 if (args_d['is_mspec']): ### For multispectral images
     
-    usables = ['.tif']
+    usables = ['.tif','.txt']
     usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
     _checker = lambda k: any( k.endswith(yy) for yy in usables )
     
