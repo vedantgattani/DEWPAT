@@ -5,6 +5,7 @@ from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from skimage import filters
 from module.complexities import *
 from module.utils import *
+from pathlib import Path
 
 '''
 Usage: python img_complexity.py <input>
@@ -168,6 +169,10 @@ group_v.add_argument('--show_dwt',
 group_v.add_argument('--show_all',          
         dest='show_all', action='store_true',
         help='Whether to display all of the above images')
+group_v.add_argument('--save_vis_to',          
+        type = str,
+        help='Whether to display all of the above images')
+
 # Gradient image usage
 group_g = parser.add_argument_group('Gradient Image Input Arguments')
 group_g.add_argument('--use_grad_only',     
@@ -188,6 +193,13 @@ args.sinkhorn_regularizer = 0.25
 args.emd_coord_scaling = 0.2
 args.show_emd_intermeds = False
 args.emd_visualize = False
+
+if not args.save_vis_to is None:
+    if args.verbose: print('Saving visualizations to', args.save_vis_to)
+    if not os.path.isdir(args.save_vis_to):
+        os.makedirs(args.save_vis_to)
+    else:
+        if args.verbose: print(args.save_vis_to, 'exists. Files may be overwritten.')
 
 # Names of complexity measures
 S_all = [ 'Pixelwise Shannon Entropy', 'Average Local Entropies',
@@ -565,7 +577,32 @@ def compute_complexities(impath,    # Path to input image file
 
     # Show images if needed
     if ( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-         or args.emd_visualize or show_pw_mnt_ptchs):
+         or args.emd_visualize or show_pw_mnt_ptchs or show_dwt):
+        # Save displayed figures to given folder
+        if not args.save_vis_to is None:
+            # Get filename
+            img_filename_s = Path(impath).stem.strip().replace(" ", "_").lower()
+            if args.verbose: print('Saving visualizations for', img_filename_s, 'to', args.save_vis_to)
+            # Save figures
+            for fign in plt.get_fignums():
+                # Try: suptitle -> axis 1 title
+                caxes = plt.figure(fign).axes
+                stitle = plt.figure(fign)._suptitle
+                if stitle is None:
+                    if len(caxes) == 0:
+                        subname = 'subfig' 
+                    else:
+                        subname = plt.figure(fign).axes[0].get_title().strip().replace(" ", "_").lower()
+                else:
+                    subname = stitle.get_text().strip().replace(" ", "_").lower()
+                #print(subname)
+                #plt.show()
+                subname = subname.replace("(", "").replace(")", "")
+                p2save  = os.path.join(args.save_vis_to, img_filename_s + "." + subname + ".png")
+                #print('gg', fign, img_filename_s, subname)
+                #print(p2save)
+                plt.figure(fign).savefig(p2save)
+        # Open up actual display
         plt.show()
 
     ### Print (single image case) and return output ###

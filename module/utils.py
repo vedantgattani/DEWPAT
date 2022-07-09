@@ -12,7 +12,7 @@ from .prob import gaussian_prob_divergence
 
 # Helper function for displays
 def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax=None, 
-              keep_axis_info=False):
+              keep_axis_info=False, suptitle=None):
     """ Displays the input image 'inim'.
 
     Args:
@@ -43,6 +43,8 @@ def imdisplay(inim, title, colorbar=False, cmap=None, mask=None, vmin=None, vmax
             if cmap is None else 
             ax.imshow(inim, cmap=cmap, vmin=vmin, vmax=vmax) )
     plt.title(title)
+    fig.canvas.set_window_title(title)
+    if not suptitle is None: plt.suptitle(suptitle)
     if colorbar: fig.colorbar(imm)
     if not keep_axis_info:
         ax.set_xticklabels([])
@@ -101,7 +103,10 @@ def patch_display(patches, nrows, ncols, show=False, title=None, subtitles=None,
             axi.get_yaxis().set_visible(False)
             #plt.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
     plt.tight_layout(pad=1.5, w_pad=0.1, h_pad=1.0)
-    if not title is None: fig.canvas.set_window_title(title)
+    if not title is None: 
+        fig.canvas.set_window_title(title)
+        fig.suptitle(title)
+        fig.subplots_adjust(top = 0.87)
     if show: plt.show()
 
 def histogram3dplot(h, e, fig=None, verbose=True):

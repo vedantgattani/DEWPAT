@@ -5,7 +5,6 @@ from skimage.morphology import disk
 from scipy.stats import entropy as scipy_discrete_shannon_entropy
 from ..utils import *
 
-
 #>> Measure 0: Channel-wise entropy in nats over pixels
 @timing_decorator()
 def discrete_pixelwise_shannon_entropy(img, alpha_mask=None, verbose=False, timing=False):

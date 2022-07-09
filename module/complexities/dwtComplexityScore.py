@@ -60,6 +60,9 @@ def visualize(im, mask, levels=4, mWavelet='haar', show=True):
     fig, ax = plt.subplots()
     #print(visOut.max())
     #print(visOut.min())
+    ax.set_title('Wavelets')
+    fig.canvas.set_window_title('Wavelets')
+    #fig.suptitle("Wavelets")
     # Clip to avoid annoying warning
     visOut = np.clip(visOut, 0, 1)
     imgPlot = plt.imshow(visOut)
