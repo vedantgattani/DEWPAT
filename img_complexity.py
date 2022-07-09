@@ -171,7 +171,7 @@ group_v.add_argument('--show_all',
         help='Whether to display all of the above images')
 group_v.add_argument('--save_vis_to',          
         type = str,
-        help='Whether to display all of the above images')
+        help='Folder into which to save all viewed visualizations')
 
 # Gradient image usage
 group_g = parser.add_argument_group('Gradient Image Input Arguments')
