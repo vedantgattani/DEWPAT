@@ -330,7 +330,7 @@ def main_helper(img_path, args):
                                    gmm_means=gmm_means, gmm_weights=gmm_weights, verbose=args.verbose)
 
     ### Visualization ###
-    if args.display: vis_label_img(img, label_image, median_seg_img, mode_seg_img)
+    if args.display: vis_label_img(img, label_image, median_seg_img, mode_seg_img, mask)
     plt.show()
 
     if args.verbose: print('Finished processing', img_path)

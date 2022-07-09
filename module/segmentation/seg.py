@@ -727,7 +727,7 @@ def _paint_img(image, labels_img, label_colors, bg_color=(0,0,0)):
     return painted_img
 
 
-def vis_label_img(image, labels_img, median_seg, mode_seg):
+def vis_label_img(image, labels_img, median_seg, mode_seg, mask=None, use_mask=True):
     """ Displays the segmented image.
 
     Displays the original image, segmentation, overlaid segmentation,
@@ -751,9 +751,16 @@ def vis_label_img(image, labels_img, median_seg, mode_seg):
                                 kind='avg')
     # Show image triplet
     fig, ax = plt.subplots(nrows=2, ncols=3) #, sharex=True, sharey=True) #, figsize=(25, 8))
-    _q = [(0,0), (0,1), (1,0), (1,1), (0,2), (1,2)]
+    _q = [(0,0), (0,1), (0,2), (1,0), (1,1), (1,2)]
     _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg', 'Median Seg', 'Mode Seg']
     for i, I in enumerate([image, pure_segs, over_segs, mean_segs, median_seg, mode_seg]):
+        if not mask is None and use_mask:
+            #print(I.dtype, I.dtype.type, I.dtype.kind, mask.dtype)
+            if I.dtype.kind in ('u', 'i'): # Unsigned/signed integer cases
+                maskp = 255 * mask.astype(I.dtype)
+            elif I.dtype.kind == 'f': # Float case
+                maskp = mask
+            I = np.concatenate((I, maskp[:,:,np.newaxis]), axis = -1)
         j, k = _q[i]
         ax[j, k].imshow(I)
         ax[j, k].axis('off')
