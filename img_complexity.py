@@ -291,6 +291,9 @@ def compute_complexities(impath,    # Path to input image file
         img,img_mask = load_color_image(impath)
     else:
         img,img_mask = load_mspec_image(impath)
+        # UGLY FIX: NEED TO CLEAN UP
+        if (type(impath) is list):
+            impath = impath[0]
     
     n_channels = img.shape[2]
 
@@ -861,7 +864,7 @@ if grad_and_orig: del args_d['use_gradient_image']
 
 if (args_d['is_mspec']): ### For multispectral images
     
-    usables = ['.tif','.txt']
+    usables = ['.tif','.txt','.csv']
     usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
     _checker = lambda k: any( k.endswith(yy) for yy in usables )
     
@@ -873,6 +876,13 @@ if (args_d['is_mspec']): ### For multispectral images
             if grad_and_orig: # Just did original
                 compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
                                             use_gradient_image=True, **args_d)
+    elif (path[-4:] == ".csv"):
+        im_stack_filenames = load_csv_data(path)
+        
+        for im_stack in im_stack_filenames:
+            compute_complexities(im_stack, complexities_to_use, print_mode='single', **args_d)
+            if grad_and_orig:
+                compute_complexities(im_stack, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
     else:
         ### Case 2: Compute complexity measure on a single image ###
         if (not _checker(path)):

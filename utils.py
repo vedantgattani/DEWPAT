@@ -422,53 +422,108 @@ def load_color_image(im_path):
     return image, im_mask
 
 def load_mspec_image(im_path):
-    
-    file_ext = im_path[-4:]
-    
-    if (file_ext == ".txt"):
-        mask_found = 0
-        n_channels = 0
-        im_mask = None
+            
+    if (type(im_path) is list):
+        image,im_mask = load_im_stack(im_path)
         
-        with open(im_path) as f:
-            im_filenames = f.read().split('\n')
-            
-        for filename in im_filenames:
-            if not (filename[-4:] == ".png"):
-                raise TypeError('Image format is not supported for multispectral image processing.')
-            temp_im = io.imread(filename)
-            
-            if (n_channels == 0):
-                image = temp_im[:,:,0]
-            else:
-                image = np.dstack((image, temp_im[:,:,0]))
-                
-            n_channels += 1
-            
-            if ((mask_found == False) and (temp_im.shape[2] > 3)):
-                im_mask = temp_im[:,:,-1]
-                im_mask = np.copy(im_mask).astype(int)
-                im_mask[im_mask <= 0] = 0
-                im_mask[im_mask > 0] = 1
-                mask_found = True
-                
+        n_channels = image.shape[2]
+        
         if (n_channels == 0):
             raise NameError("No images were found in file: " + im_path)
-        
+
         if (im_mask is None):
             print (str(n_channels) + " images were found. No mask.")
         else:
             print (str(n_channels) + " images were found + mask.")
+    else:    
+        file_ext = im_path[-4:]
+
+        if (file_ext == ".txt"):
+            mask_found = 0
+            n_channels = 0
+            im_mask = None
+
+            with open(im_path) as f:
+                im_filenames = f.read().split('\n')
             
-    elif (file_ext == ".tif"):
+            image,im_mask = load_im_stack(im_filenames)
+        
+            n_channels = image.shape[2]
             
-        image = io.imread(im_path)
-        im_mask = np.ones(image.shape[0:2])
-    
-        if (np.any(np.isnan(image[:,:,0]))):
-            im_mask[np.isnan(image[:,:,0])] = 0
+            if (n_channels == 0):
+                raise NameError("No images were found in file: " + im_path)
+
+            if (im_mask is None):
+                print (str(n_channels) + " images were found. No mask.")
+            else:
+                print (str(n_channels) + " images were found + mask.")
+
+        elif (file_ext == ".tif"):
+
+            image = io.imread(im_path)
+            im_mask = np.ones(image.shape[0:2])
+
+            if (np.any(np.isnan(image[:,:,0]))):
+                im_mask[np.isnan(image[:,:,0])] = 0
     
     return image,im_mask
+
+
+def load_im_stack(im_filenames):
+    
+    mask_found = 0
+    n_channels = 0
+    
+    if (len(im_filenames) < 2):
+        raise TypeError('A multispectral image must have at least two layers.')
+    
+    for filename in im_filenames:
+        if not (filename[-4:] == ".png"):
+            raise TypeError('Image format is not supported for multispectral image processing.')
+        temp_im = io.imread(filename)
+
+        if (n_channels == 0):
+            image = temp_im[:,:,0]
+        else:
+            image = np.dstack((image, temp_im[:,:,0]))
+
+        n_channels += 1
+
+        if ((mask_found == False) and (temp_im.shape[2] > 3)):
+            im_mask = temp_im[:,:,-1]
+            im_mask = np.copy(im_mask).astype(int)
+            im_mask[im_mask <= 0] = 0
+            im_mask[im_mask > 0] = 1
+            mask_found = True
+
+    return image, im_mask
+
+
+def load_csv_data(csv_path):
+    
+    file_ext = csv_path[-4:]
+    
+    if (file_ext == ".csv"):
+        csvLines = read_csv_full(csv_path)
+        del csvLines[0]
+               
+        im_filename_stacks = []
+        currStackIndex = -1
+        for line in csvLines:
+            
+            if not (line[2][-4:] == ".png"):
+                raise TypeError('Image format is not supported for multispectral image processing.')
+                
+            if ((int)(line[1]) > currStackIndex):
+                im_filename_stacks.append([line[2]])
+                currStackIndex +=1
+            else:
+                im_filename_stacks[currStackIndex].append(line[2])
+
+    print(len(im_filename_stacks),"image stacks have been found.")
+    
+    return im_filename_stacks
+
 
 def convert_im_stack(im_path):
     # Accepts directory + image  name without suffix and returns a ndarray where each slice of depth corresponds to 1 multispectral image.
