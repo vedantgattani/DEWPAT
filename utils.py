@@ -421,7 +421,7 @@ def load_color_image(im_path):
 
     return image, im_mask
 
-def load_mspec_image(im_path):
+def load_mspec_image(im_path, verbose):
             
     if (type(im_path) is list):
         image,im_mask = load_im_stack(im_path)
@@ -430,11 +430,11 @@ def load_mspec_image(im_path):
         
         if (n_channels == 0):
             raise NameError("No images were found in file: " + im_path)
-
-        if (im_mask is None):
-            print (str(n_channels) + " images were found. No mask.")
-        else:
-            print (str(n_channels) + " images were found + mask.")
+        if (verbose):
+            if (im_mask is None):
+                print (str(n_channels) + " images were found. No mask.")
+            else:
+                print (str(n_channels) + " images were found + mask.")
     else:    
         file_ext = im_path[-4:]
 
@@ -452,11 +452,11 @@ def load_mspec_image(im_path):
             
             if (n_channels == 0):
                 raise NameError("No images were found in file: " + im_path)
-
-            if (im_mask is None):
-                print (str(n_channels) + " images were found. No mask.")
-            else:
-                print (str(n_channels) + " images were found + mask.")
+            if (verbose):
+                if (im_mask is None):
+                    print (str(n_channels) + " images were found. No mask.")
+                else:
+                    print (str(n_channels) + " images were found + mask.")
 
         elif (file_ext == ".tif"):
 

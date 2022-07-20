@@ -290,7 +290,7 @@ def compute_complexities(impath,    # Path to input image file
     if is_color:
         img,img_mask = load_color_image(impath)
     else:
-        img,img_mask = load_mspec_image(impath)
+        img,img_mask = load_mspec_image(impath, verbose)
         # UGLY FIX: NEED TO CLEAN UP
         if (type(impath) is list):
             impath = impath[0]
@@ -880,9 +880,9 @@ if (args_d['is_mspec']): ### For multispectral images
         im_stack_filenames = load_csv_data(path)
         
         for im_stack in im_stack_filenames:
-            compute_complexities(im_stack, complexities_to_use, print_mode='single', **args_d)
+            compute_complexities(im_stack, complexities_to_use, print_mode='compact', **args_d)
             if grad_and_orig:
-                compute_complexities(im_stack, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
+                compute_complexities(im_stack, complexities_to_use, print_mode='compact', use_gradient_image=True, **args_d)
     else:
         ### Case 2: Compute complexity measure on a single image ###
         if (not _checker(path)):
