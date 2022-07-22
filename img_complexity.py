@@ -138,6 +138,8 @@ group_p.add_argument('--gamma_cov_weight', type=float, default=1.0,
     help='Specifies the weight on the covariance matrix distance in the patch moment measure')
 group_p.add_argument('--pw_mnt_dist_nonOL_WS', type=str, default="3,4", 
     help='Specifies the number of patches when discretizing for the pairwise patch distance measures')
+group_p.add_argument('--fourier_wt', type=str, default="l2", choices = ["l1", "l2"],
+    help='Weighting scheme for Fourier complexity calculation')
 
 # Display options
 group_v = parser.add_argument_group('Visualization Arguments',
@@ -172,6 +174,9 @@ group_v.add_argument('--show_all',
 group_v.add_argument('--save_vis_to',          
         type = str,
         help='Folder into which to save all viewed visualizations')
+group_v.add_argument('--no_display',          
+        dest='no_display', action='store_true',
+        help='Pass this flag to turn off opening the vis windows (use with save_vis_to)')
 
 # Gradient image usage
 group_g = parser.add_argument_group('Gradient Image Input Arguments')
@@ -414,8 +419,12 @@ def compute_complexities(impath,    # Path to input image file
     # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
     # incur different frequency effects than on a black bg). 
     if 2 in complexities_to_use:
-        add_new(mean_weighted_fourier_coef(img, alpha_mask=alpha_mask, show_fourier_image=show_fourier_image, 
-                                           verbose=verbose, timing=args.timing), 2)
+        add_new(mean_weighted_fourier_coef(img, 
+                                           alpha_mask = alpha_mask, 
+                                           weight_type = args.fourier_wt,
+                                           show_fourier_image = show_fourier_image, 
+                                           verbose = verbose, 
+                                           timing = args.timing), 2)
 
     #--------------------------------------------------------------------------------------------------------------------#
 
@@ -595,15 +604,12 @@ def compute_complexities(impath,    # Path to input image file
                         subname = plt.figure(fign).axes[0].get_title().strip().replace(" ", "_").lower()
                 else:
                     subname = stitle.get_text().strip().replace(" ", "_").lower()
-                #print(subname)
-                #plt.show()
                 subname = subname.replace("(", "").replace(")", "")
                 p2save  = os.path.join(args.save_vis_to, img_filename_s + "." + subname + ".png")
-                #print('gg', fign, img_filename_s, subname)
-                #print(p2save)
                 plt.figure(fign).savefig(p2save)
         # Open up actual display
-        plt.show()
+        if not args.no_display:
+            plt.show()
 
     ### Print (single image case) and return output ###
     complexities_strings = list(map(lambda f: '%.4f' % f, complexities))
@@ -621,6 +627,8 @@ def compute_complexities(impath,    # Path to input image file
         print("%s,%s" % (impath,",".join(complexities_strings)))
         if args.timing:
             print('  |> Timings:', ",".join( list(map(lambda f: '%.3f' % f, timings)) ), '[Total: %.1fs]' % sum(timings))
+    # Clean up visualizations 
+    plt.close('all')
     # Return final output
     if args.timing: return impath, complexities_strings, timings    
     return impath, complexities_strings

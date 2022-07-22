@@ -104,7 +104,13 @@ def channelwise_local_entropies(img, alpha_mask=None, show_locent_image=False, l
 # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
 # incur different frequency effects than on a black bg). 
 @timing_decorator()
-def mean_weighted_fourier_coef(img, alpha_mask=None, mode='mean', show_fourier_image=False, verbose=False, timing=False):
+def mean_weighted_fourier_coef(img, 
+                               alpha_mask=None, 
+                               mode='mean', 
+                               weight_type='l2',
+                               show_fourier_image=False, 
+                               verbose=False, 
+                               timing=False):
     r""" Computes the frequency-weighted average of the Fourier coefficient values.
 
     The Fourier coefficients are weighted by the Manhattan distance from the center
@@ -138,6 +144,8 @@ def mean_weighted_fourier_coef(img, alpha_mask=None, mode='mean', show_fourier_i
         The weighted average of the Fourier coefficient values.
         If 'timing' is True, the timing of the function is also returned.
     """
+    weight_type = weight_type.lower().strip()
+    assert weight_type in ['l1', 'l2'], "Unrecognized weight type"
     assert mode in ['std', 'mean'], "Unrecognized Fourier bg handling mode"
     h, w = img.shape[0:2]
     c = h / 2 - 0.5, w / 2 - 0.5
@@ -157,8 +165,12 @@ def mean_weighted_fourier_coef(img, alpha_mask=None, mode='mean', show_fourier_i
                                     ]).transpose((1,2,0)) # Same shape as input
     avg_fourier_image = np.mean(shifted_fourier_logmag_image, axis=2)
     # Manhattan weighting from center
-    index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
-                        for j in range(0,w)] for i in range(0,h)])
+    if weight_type == 'l1':
+        index_grid_cen = np.array([[ np.abs(i-c[0]) + np.abs(j-c[1])
+                            for j in range(0,w)] for i in range(0,h)])
+    elif weight_type == 'l2':
+        index_grid_cen = np.array([[ np.sqrt( np.clip( (i-c[0])**2 + (j-c[1])**2, a_min=1e-8, a_max=None ) )
+                            for j in range(0,w)] for i in range(0,h)])
     # Normalize weights into [0,1]. Note this doesn't matter because of the later sum normalization.
     index_grid_cen = index_grid_cen / np.max(index_grid_cen) 
     fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
