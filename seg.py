@@ -1,5 +1,5 @@
 import os, sys, module.utils as utils, argparse, sklearn, skimage, numpy as np, numpy.random as npr
-import warnings, matplotlib.pyplot as plt, csv
+import warnings, matplotlib.pyplot as plt, csv, random
 from skimage import data, segmentation, color
 from skimage.color import rgb2hsv
 from skimage.future import graph
@@ -21,6 +21,8 @@ def main():
         help='Labelling (segmentation and/or clustering) algorithm.')
     parser.add_argument('--verbose', dest='verbose', action='store_true',
         help='Whether to print verbosely while running')
+    parser.add_argument('--rseed', type=int, default=None,
+        help='Specify a fixed random seed to use for this run.')
     ### Image preprocessing
     parser.add_argument('--resize', type=float, default=1.0,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 1.0)')
@@ -104,6 +106,13 @@ def main():
     parser.add_argument('--display', dest='display', action='store_true',
         help='Whether to display the resulting labelling')
     args = parser.parse_args()
+
+    # Set random seed state
+    if not args.rseed is None:
+        # Note that this is the legacy approach, not the ideal one, for numpy
+        if args.verbose: print('Setting random seed to', args.rseed)
+        np.random.seed(args.rseed)
+        random.seed(args.rseed)
 
     ### Checks ###
     # Ensure we have somewhere to write the mean segs, if needed

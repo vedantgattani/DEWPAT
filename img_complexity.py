@@ -1,4 +1,4 @@
-import os, sys, numpy as np, skimage, argparse, warnings
+import os, sys, numpy as np, skimage, argparse, warnings, random
 import matplotlib.pyplot as plt
 from skimage.util import view_as_windows
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
@@ -33,6 +33,8 @@ parser.add_argument('--greyscale', type=str, default="none",
     help='Specify greyscale conversion: one of "human", "avg", or "none".')
 parser.add_argument('--resize', type=float, default=1.0,
     help='Specify scalar resizing value. E.g., 0.5 halves the image size; 2 doubles it.')
+parser.add_argument('--rseed', type=int, default=None,
+    help='Specify a fixed random seed to use for this run.')
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
         description=('Controls which complexity measures to utilize. ' + 
@@ -198,6 +200,12 @@ args.sinkhorn_regularizer = 0.25
 args.emd_coord_scaling = 0.2
 args.show_emd_intermeds = False
 args.emd_visualize = False
+
+if not args.rseed is None:
+    # Note that this is the legacy approach, not the ideal one, for numpy 
+    if args.verbose: print('Setting random seed to', args.rseed)
+    np.random.seed(args.rseed)
+    random.seed(args.rseed)
 
 if not args.save_vis_to is None:
     if args.verbose: print('Saving visualizations to', args.save_vis_to)
