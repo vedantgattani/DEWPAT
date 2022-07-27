@@ -461,6 +461,10 @@ def load_mspec_image(im_path, verbose):
         elif (file_ext == ".tif"):
 
             image = io.imread(im_path)
+            
+            if (image.shape[0] < image.shape[1]) and (image.shape[0] < image.shape[2]):
+                image = np.transpose(image,(1,2,0))
+
             im_mask = np.ones(image.shape[0:2])
 
             if (np.any(np.isnan(image[:,:,0]))):
