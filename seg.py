@@ -6,7 +6,7 @@ from skimage.future import graph
 from sklearn import cluster
 from scipy import interpolate
 from collections import Counter
-from utils import Formatter
+from utils import *
 
 _glob_form = Formatter()
 
@@ -21,8 +21,10 @@ def main():
     parser.add_argument('--labeller', dest='labeller', type=str, default='kmeans',
         choices=['affinity_prop', 'dbscan', 'optics', 'graph_cuts', 'kmeans'],
         help='Labelling (segmentation and/or clustering) algorithm.')
-    parser.add_argument('--verbose', dest='verbose', action='store_true',
+    parser.add_argument('--verbose', dest='verbose', default=False, action='store_true',
         help='Whether to print verbosely while running')
+    parser.add_argument('--mspec', dest='is_mspec', action='store_true',
+        help='Whether to treat the input as a multispectral image')
     ### Image preprocessing
     parser.add_argument('--resize', type=float, default=0.5,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
@@ -109,40 +111,70 @@ def main():
         args.kmeans_specifier = utils.read_csv_full(args.kmeans_k_file_list)
     else:
         args.kmeans_specifier = None
-
+    
     ### Handle images ###
     file_outputs = {}
-    if os.path.isdir(args.input):
+    if (args.is_mspec): # Multispectral images
+        if (False): # Multi image
+            raise NotImplementedError('Multi-image multispectral image segmentation is not supported yet.')
+        elif os.path.isfile(args.input): # Single image
+            usables = ['.tif']
+            usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
+            _checker = lambda k: any( k.endswith(yy) for yy in usables )
+            if (not _checker(args.input)):
+                raise TypeError('Image format is not supported for multispectral image processing.')
+            file_outputs[args.input] = main_helper(args.input, args)
+        else:
+            raise ValueError('Non-existent target input ' + args.input)            
+    else: # Color images
         usables = [ '.jpg', '.png' ]
         usables = list(set( usables + [ b.upper() for b in usables ] + 
                                       [ b.lower() for b in usables ] ))
         _checker = lambda k: any( k.endswith(yy) for yy in usables )
-        targets = [ os.path.join(args.input, f) 
-                    for f in os.listdir(args.input) if _checker(f) ]
-        for t in targets: 
-            file_outputs[t] = main_helper(t, args)
-    elif os.path.isfile(args.input):
-        file_outputs[args.input] = main_helper(args.input, args)
-    else:
-        raise ValueError('Non-existent target input ' + args.input)
-
+        if os.path.isdir(args.input): ### Multi-images
+            targets = [ os.path.join(args.input, f) 
+                        for f in os.listdir(args.input) if _checker(f) ]
+            for t in targets: 
+                file_outputs[t] = main_helper(t, args)
+        elif os.path.isfile(args.input): ### Single image
+            if (not _checker(args.input)):
+                raise TypeError('Image format is not supported for color image processing.')
+            file_outputs[args.input] = main_helper(args.input, args)
+                      
+        else:
+            raise ValueError('Non-existent target input ' + args.input)
+        
     # Write seg info results
     if not (args.seg_stats_output_file is None):
         if args.verbose: print('Writing seg file to', args.seg_stats_output_file)
         with open(args.seg_stats_output_file, "w") as _fh:
             #_fh.write("file,cluster_ind,mu_C_1,mu_C_2,mu_C_3,n_member_pixels,percent_member_pixels\n")
-            _fh.write("image,cluster,R,G,B,H,S,V,frequency,percent\n")
+            # Check first output dict to see if HSV data is included
+            header_line = ['image,cluster,']
+            _,testDict = file_outputs[next(iter(file_outputs))]
+            D = testDict['cluster_info']['cluster_stats'][next(iter(testDict['cluster_info']['cluster_stats']))]
+            mu_keys = [s for s in D.keys() if "mean_value" in s]
+            for i in range(len(mu_keys)):
+                header_line.append('mu_ch'+str(i+1) + ',')
+            if (not args.is_mspec):
+                header_line.append('mu_H,mu_S,mu_V,')
+            header_line.append('frequency,percent\n')
+            _fh.write(''.join(header_line))
+
             for key in file_outputs.keys(): # For each file
                 tmat, D_img = file_outputs[key]
                 Ds = D_img['cluster_info']['cluster_stats']
                 clines = []
                 for cluster_label in Ds.keys(): # For each cluster
                     D = Ds[cluster_label]
-                    clines.append( [ key, D['label_number'], 
-                               D['mean_C1'], D['mean_C2'], D['mean_C3'], 
-                               D['mean_C1_hsv'], D['mean_C2_hsv'], D['mean_C3_hsv'], 
-                               D['n_member_pixels'], 
-                               D['percent_member_pixels'] ] ) # ) )
+                    cline = [key, D['label_number']]
+                    mu_keys = [s for s in D.keys() if "mean_value" in s]
+                    for i in range(len(mu_keys)):
+                        cline.append(D[mu_keys[i]])
+                    if (not args.is_mspec):
+                        cline.extend([D['mean_colour_H'], D['mean_colour_S'], D['mean_colour_V']])
+                    cline.extend([D['n_member_pixels'], D['percent_member_pixels']])
+                    clines.append(cline)
                 clines.sort(key = lambda a: a[-1], reverse = True)
                 clines = [ ",".join( map(str, a) ) for a in clines ]
                 for line in clines: _fh.write(line + '\n')
@@ -177,7 +209,12 @@ def main_helper(img_path, args):
                 print('\tObtained k-value of', found_k)
             args.kmeans_k = found_k
 
-    img = skimage.io.imread(img_path)
+    if (not args.is_mspec):
+        img, img_mask = load_color_image(img_path)
+    else:
+        img, img_mask = load_mspec_image(img_path)
+        raise NotImplementedError('Multispectral images cannot be loaded in segmentation module yet.')
+        
     if args.verbose: print('Loaded image', img_path)
     n_channels = img.shape[2]
 
@@ -191,35 +228,35 @@ def main_helper(img_path, args):
         img = skimage.transform.rescale(img, scale=resize_factor_main,
                 anti_aliasing=True, multichannel=True)
         img = utils.conv_to_ubyte(img)
+        if (img_mask is not None):
+            img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main,
+                anti_aliasing=True, multichannel=False)
+            img_mask = utils.conv_to_ubyte(img_mask)
+            img_mask[ img_mask > 0] = 1
+            img_mask[ img_mask <= 0] = 0
         if args.verbose: print("Resized dims:", img.shape)
     
     # Handle masking (alpha transparency)
-    mask = None
-    if n_channels == 4:
-        a = img[:, :, 3]
-        img = img[:, :, :3]
-        mask = a.copy()
-        mask[ a >  128 ] = 1 # 255
-        mask[ a <= 128 ] = 0
+    if (img_mask is not None):
         # Zero out the background
         if not args.ignore_alpha:
-            img *= mask[:,:,np.newaxis]
-
+            img[img_mask <= 0] = 0
+        
     # Default mask: non-transparent alpha channel
-    H, W, C = img.shape
-    if (mask is None) or args.ignore_alpha: 
-        mask = np.ones( (H,W) )
-
+    H, W,_  = img.shape
+    if (img_mask is None) or args.ignore_alpha: 
+        img_mask = np.ones( (H,W) )
+    
     # Gaussian filter if desired
     if args.blur > 1e-8:
         if args.verbose: print("\tBlurring with sigma =", args.blur)
         img = gauss_filter(img, args.blur)
-
+        
     if args.verbose: 
-        print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,C), 
+        print('\tShape (%d,%d,%d)\n\tmin/max vals:' % (H,W,n_channels), 
               img.min(0).min(0), img.max(0).max(0))
-        print('\tNum masked values:', H*W - (mask > 0).sum(), "/", H*W)
-
+        print('\tNum masked values:', H*W - (img_mask > 0).sum(), "/", H*W)
+    
     ### Label (cluster/segment) the image ###
     def reorder_label_img(LI):
         if args.verbose: print('\tReordering label image')
@@ -262,7 +299,7 @@ def main_helper(img_path, args):
         def attempt_merge(currLI):
             """ Runs a single merge iteration. Returns None if nothing was merged. """
             print('\tEntering single merge attempt')
-            D = label_img_to_stats(img, mask, currLI)
+            D = label_img_to_stats(img, img_mask, currLI, (not args.is_mspec))
             cluster_stats = D['cluster_info']['cluster_stats']
             current_labels = D['cluster_info']['allowed_labels']
             found_failure = False
@@ -317,26 +354,27 @@ def main_helper(img_path, args):
     # Compute labelling -> merge clusters -> reorder labels
     label_image = reorder_label_img( 
                         merge_smaller_clusters( 
-                            label(img, mask, args.labeller, args) 
+                            label(img, img_mask, args.labeller, args) 
                         ) 
                   )
-    mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
+    if (not args.is_mspec):
+        mean_seg_img = color.label2rgb(label_image, image = img, bg_label = -1, 
                                     bg_color = (0.0, 0.0, 0.0), kind = 'avg')
-    # Write mean-cluster-valued image out if desired
-    if args.write_mean_segs:
-        int_mask = (mask*255).reshape(H,W,1)
-        mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
-        if not os.path.isdir(args.mean_seg_output_dir):
-            os.makedirs(args.mean_seg_output_dir)
-        cfname = os.path.join(args.mean_seg_output_dir, 
+        # Write mean-cluster-valued image out if desired
+        if args.write_mean_segs:
+            int_mask = (img_mask*255).reshape(H,W,1)
+            mean_segs4 = np.concatenate( (mean_seg_img, int_mask), axis = 2 )
+            if not os.path.isdir(args.mean_seg_output_dir):
+                os.makedirs(args.mean_seg_output_dir)
+            cfname = os.path.join(args.mean_seg_output_dir, 
                               img_file_basename_extless + ".mean_seg.png")
-        if args.verbose: print('\tSaving mean seg image to', cfname)
-        skimage.io.imsave(fname = cfname, arr = mean_segs4)
+            if args.verbose: print('\tSaving mean seg image to', cfname)
+            skimage.io.imsave(fname = cfname, arr = mean_segs4)
 
     ### Compute transition matrix and other stats ###
     M = transition_matrix(label_image, args.normalize_matrix, 
             print_M = (not args.no_print_transitions), args=args )
-    img_stats = label_img_to_stats(img, mask, label_image, mean_seg_img, args.verbose)
+    img_stats = label_img_to_stats(img, img_mask, label_image, (not args.is_mspec), args.verbose)
 
     ### Visualization ###
     if args.display: vis_label_img(img, label_image, args)
@@ -345,42 +383,40 @@ def main_helper(img_path, args):
     if args.verbose: print('Finished processing', img_path)
     return M, img_stats
 
-def label_img_to_stats(img, mask, label_img, mean_seg_img=None, verbose=False):
+def label_img_to_stats(img, mask, label_img, is_color, verbose=False):
     """
     Returns a dictionary of label img and initial image stats
     This includes a subdictionary of information per label set (cluster)
     """
-    if mean_seg_img is None:
-        mean_seg_img = color.label2rgb(label_img, image = img, bg_label = -1, 
-                                       bg_color = (0.0, 0.0, 0.0), kind = 'avg')
-    # 
-    H, W, C = img.shape
+    
+    H, W, n_channels = img.shape
     allowed_labels = list(set(label_img.flatten().astype(int).tolist()))
     n_labels = len(allowed_labels)
     n_masked = (label_img == -1).sum()
     n_unmasked = (H*W) - n_masked
     cluster_info = { 'n_labels' : n_labels, 'allowed_labels' : allowed_labels }
     cluster_stats = {}
+
     for label in allowed_labels:
         if label == -1: continue # Ignore bg
+            
         bool_indexer = np.logical_and(mask != 0, label_img == label)
-        orig_vals = img[bool_indexer] # Valid values in the current cluster
-        mean_vals = mean_seg_img[bool_indexer]
-        mean_cluster_value = orig_vals.mean(0)
-        premeaned_val = mean_vals.mean(0)
-        premeaned_val_hsv = rgb2hsv(premeaned_val.reshape(1,1,3) / 255.0)[0,0,:]
-        cluster_stats[label] = {
-            'label_number'          : label,
-            'mean_C1'               : mean_cluster_value[0], # R (floats)
-            'mean_C2'               : mean_cluster_value[1], # G
-            'mean_C3'               : mean_cluster_value[2], # B
-            'mean_C1_hsv'           : premeaned_val_hsv[0],  # H in [0,1], multiply by 360 to get degrees
-            'mean_C2_hsv'           : premeaned_val_hsv[1],  # S
-            'mean_C3_hsv'           : premeaned_val_hsv[2],  # V
-            'n_member_pixels'       : orig_vals.shape[0],
-            'percent_member_pixels' : orig_vals.shape[0] / n_unmasked,
-            'mean_colour'           : premeaned_val, # Integer array
-        }
+        orig_vals = img[bool_indexer] # Valid values in the current cluster       
+        mean_cluster_value = orig_vals.mean(0) # Mean value for each channel of img
+       
+        # Fill in cluster_stats dictionary
+        cluster_stats[label] = {'label_number':label}
+        for i in range(len(mean_cluster_value)):
+            cluster_stats[label]['mean_value'+str(i+1)] = mean_cluster_value[i]
+        if (is_color):
+            mean_cluster_value_hsv = rgb2hsv(mean_cluster_value.reshape(1,1,3) / 255.0)[0,0,:]
+            cluster_stats[label]['mean_colour_H'] = mean_cluster_value_hsv[0]
+            cluster_stats[label]['mean_colour_S'] = mean_cluster_value_hsv[1]
+            cluster_stats[label]['mean_colour_V'] = mean_cluster_value_hsv[2]
+        cluster_stats[label]['n_member_pixels'] = orig_vals.shape[0]
+        cluster_stats[label]['percent_member_pixels'] = orig_vals.shape[0] / n_unmasked
+        cluster_stats[label]['mean_colour'] = mean_cluster_value
+            
     cluster_info['cluster_stats'] = cluster_stats
     D = { 'H'                 : H,
           'W'                 : W,
@@ -400,21 +436,22 @@ def label(image, mask, method, args):
     Output: Pixelwise labels (M x N), integer
     """
     # Convert to desired colour space
-    if not args.clustering_colour_space == 'rgb':
-        if args.verbose: 
-            _K = args.clustering_colour_space 
-            _app = { 'cie' : '(CIE-1931-RGB)', 'lab' : '(CIE-LAB)', 'hsv' : '' }
-            print('Converting to colour space', _K, _app[_K]) 
-        if args.clustering_colour_space == 'hsv':
-            image = np.rint( rgb2hsv(image/255.0) * 255.0 ).astype(int) 
-        if args.clustering_colour_space == 'cie': # CIE1931
-            from skimage.color import rgb2rgbcie
-            image = np.rint( rgb2rgbcie(image/255.0) * 255.0 ).astype(int)
-        if args.clustering_colour_space == 'lab': # CIE-LAB / CIE L*a*b*
-            # LAB may be the most perceptually principled choice since (in humans)
-            # it can be used to compute more perceptual colour differences.
-            from skimage.color import rgb2lab # Bounds: [0,100], [-128,128], [-128,128]
-            image = np.rint( rgb2lab(image/255.0) ).astype(int) 
+    if (not args.is_mspec):
+        if not args.clustering_colour_space == 'rgb':
+            if args.verbose: 
+                _K = args.clustering_colour_space 
+                _app = { 'cie' : '(CIE-1931-RGB)', 'lab' : '(CIE-LAB)', 'hsv' : '' }
+                print('Converting to colour space', _K, _app[_K]) 
+            if args.clustering_colour_space == 'hsv':
+                image = np.rint( rgb2hsv(image/255.0) * 255.0 ).astype(int) 
+            if args.clustering_colour_space == 'cie': # CIE1931
+                from skimage.color import rgb2rgbcie
+                image = np.rint( rgb2rgbcie(image/255.0) * 255.0 ).astype(int)
+            if args.clustering_colour_space == 'lab': # CIE-LAB / CIE L*a*b*
+                # LAB may be the most perceptually principled choice since (in humans)
+                # it can be used to compute more perceptual colour differences.
+                from skimage.color import rgb2lab # Bounds: [0,100], [-128,128], [-128,128]
+                image = np.rint( rgb2lab(image/255.0) ).astype(int) 
     # Perform clustering
     if method == 'graph_cuts': return segment(image, method, mask, args)
     else:                      return cluster_based_img_seg(image, mask, method, args)
@@ -526,28 +563,36 @@ def vis_label_img(image, labels_img, args):
     Visualization method for clustered/segmented image.
     Display segmentation, overlaid segmentation, and mean-value segmentation.
     """
-    # Segmentation
-    pure_segs = color.label2rgb(labels_img)
-    # Overlaid segmentation
-    over_segs = color.label2rgb(labels_img, image=image, 
+    if (args.is_mspec):
+        # Segmentation
+        pure_segs = color.label2rgb(labels_img)
+        # Overlaid segmentation
+        over_segs = color.label2rgb(labels_img, image=image, 
                                 alpha=0.25, bg_label=-1, 
                                 bg_color=(0,0,0), image_alpha=1, 
                                 kind='overlay')
-    # Mean value segmentation
-    mean_segs = color.label2rgb(labels_img, image=image, 
+        # Mean value segmentation
+        mean_segs = color.label2rgb(labels_img, image=image, 
                                 alpha=0.25, bg_label=-1, 
                                 bg_color=(0,0,0), image_alpha=1, 
                                 kind='avg')
-    # Show image triplet
-    fig, ax = plt.subplots(nrows=2, ncols=2) #, sharex=True, sharey=True) #, figsize=(25, 8))
-    _q = [(0,0), (0,1), (1,0), (1,1)]
-    _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg']
-    for i, I in enumerate([image, pure_segs, over_segs, mean_segs]):
-        j, k = _q[i]
-        ax[j, k].imshow(I)
-        ax[j, k].axis('off')
-        ax[j, k].set_title(_t[i])
-    plt.tight_layout()
+        # Show image triplet
+        fig, ax = plt.subplots(nrows=2, ncols=2) #, sharex=True, sharey=True) #, figsize=(25, 8))
+        _q = [(0,0), (0,1), (1,0), (1,1)]
+        _t = ['Orig Image', 'Segmentation', 'Seg Overlay', 'Mean Seg']
+        for i, I in enumerate([image, pure_segs, over_segs, mean_segs]):
+            j, k = _q[i]
+            ax[j, k].imshow(I)
+            ax[j, k].axis('off')
+            ax[j, k].set_title(_t[i])
+        plt.tight_layout()
+    else:
+        # Segmentation
+        pure_segs = color.label2rgb(labels_img)
+        plt.imshow(pure_segs)
+        plt.title('Segmentation')
+        plt.axis('off')
+        plt.tight_layout()
 
 def transition_matrix(L, normalize, print_M, args):
     """

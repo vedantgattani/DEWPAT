@@ -27,6 +27,8 @@ parser.add_argument('--ignore_alpha', dest='ignore_alpha', action='store_true',
         help='Whether to ignore the alpha mask channel')
 parser.add_argument('--timing', dest='timing', action='store_true',
         help='Whether to measure and print timing on each function')
+parser.add_argument('--mspec', dest='is_mspec', action='store_true',
+    help='Whether to treat the input as a multispectral image')
 # Preprocessing (resize, blur, greyscale, etc...)
 parser.add_argument('--blur', type=float, default=0.0,
     help='Specify Gaussian blur standard deviation applied to the image')
@@ -198,7 +200,7 @@ input_vals = [ args.discrete_global_shannon, args.discrete_local_shannon,
                args.pairwise_emd, args.pairwise_mean_distances,
                args.pairwise_moment_distances, args.wavelet_details,
                args.pwg_jeffreys_div, args.pwg_w2_div, args.pwg_hellinger_div,
-               args.pwg_bhattacharyya_div, args.pwg_fmatf_div ]
+               args.pwg_bhattacharyya_div, args.pwg_fmatf_div]
 assert len(S_all) == len(input_vals)
 if all(map(lambda k: k is None, input_vals)):
     # No metric specified
@@ -256,7 +258,8 @@ def compute_complexities(impath,    # Path to input image file
         show_pw_mnt_ptchs = False,  # Show the patches used to compute the moments (for measures 9 and 10)
         show_dwt = False,           # Show the DWT intermediaries
         display_image = False,      # Whether to display the image under consideration
-        verbose=False               # Whether to print verbosely when running
+        verbose=False,               # Whether to print verbosely when running
+        is_mspec=False             # Whether to treat the input as a multispectral image
     ):
     '''
     Computes pixelwise entropy, average filtered entropy, weighted frequency content,
@@ -282,9 +285,18 @@ def compute_complexities(impath,    # Path to input image file
     _oneparam_affine = lambda x, affp: (x + affp) / affp
     # Read original image
     if verbose: print('Reading image:', impath)
-    img = skimage.io.imread(impath)
-    n_channels = img.shape[2]
+    # Check if color image or mspec image
+    is_color = not args.is_mspec
+    if is_color:
+        img,img_mask = load_color_image(impath)
+    else:
+        img,img_mask = load_mspec_image(impath, verbose)
+        # UGLY FIX: NEED TO CLEAN UP
+        if (type(impath) is list):
+            impath = impath[0]
     
+    n_channels = img.shape[2]
+
     # Downscale image, if desired
     resize_factor_main = args.resize
     assert resize_factor_main > 0.0, "--resize must be positive"
@@ -296,47 +308,43 @@ def compute_complexities(impath,    # Path to input image file
                 anti_aliasing=True, multichannel=True)
         img = conv_to_ubyte(img)
         if verbose: print("Resized dims:", img.shape)
-        if n_channels == 4:
-            alpha_layer = img[:,:,3]
-            if False: # Display 
-                imdisplay(alpha_layer, 'alpha_layer', colorbar=True, cmap='plasma')
-                imdisplay(img[:,:,0:3], 'layers', colorbar=True, cmap='plasma')
+        if (img_mask is not None):
+            img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main, 
+                anti_aliasing=True, multichannel=False)
+            img_mask[ img_mask > 0] = 1
+            img_mask[ img_mask <= 0] = 0
+            if (False and is_color):
+                imdisplay(img_mask, 'alpha_layer', colorbar=True, cmap='plasma')
+                imdisplay(img, 'layers', colorbar=True, cmap='plasma')
                 plt.show()
-            alpha_layer[ alpha_layer >  128 ] = 255
-            alpha_layer[ alpha_layer <= 128 ] = 0
-    
+                   
     # Handle alpha transparency
-    alpha_channel = img[:,:,3] if n_channels == 4 else None
-    using_alpha_mask = not (alpha_channel is None)
+    
+    using_alpha_mask = not (img_mask is None)
     if using_alpha_mask:
-        img = img[:,:,0:3]
-        alpha_mask = np.copy(alpha_channel).astype(int)
-        alpha_mask[ alpha_mask <= 0 ] = 0
-        alpha_mask[ alpha_mask  > 0 ] = 1
-        if False: # Display mask
-            imdisplay(alpha_mask, 'alpha_mask', colorbar=True, cmap='plasma')
+        if (False and is_color): # Display mask
+            imdisplay(img_mask, 'image_mask', colorbar=True, cmap='plasma')
             plt.show()
-    else:
-        alpha_mask = None
 
     # Ignore the alpha channel, if desired
     if args.ignore_alpha:
         using_alpha_mask = False
-        alpha_mask, alpha_channel = None, None
+        img_mask = None
     
     # Convert image to greyscale, if desired
     is_scalar = False
-    gs_type = args.greyscale.lower()
-    assert gs_type in ["none", "human", "avg"], 'Use one of --greyscale none/avg/human'
-    if gs_type == 'human':
-        if verbose: print("Greyscaling image (perceptual)")
-        img = to_perceptual_greyscale(img)
-        is_scalar = True
-    elif gs_type == 'avg':
-        if verbose: print("Greyscaling image (channel mean)")
-        img = to_avg_greyscale(img)
-        is_scalar = True
-
+    if (is_color):
+        gs_type = args.greyscale.lower()
+        assert gs_type in ["none", "human", "avg"], 'Use one of --greyscale none/avg/human'
+        if gs_type == 'human':
+            if verbose: print("Greyscaling image (perceptual)")
+            img = to_perceptual_greyscale(img)
+            is_scalar = True
+        elif gs_type == 'avg':
+            if verbose: print("Greyscaling image (channel mean)")
+            img = to_avg_greyscale(img)
+            is_scalar = True
+        
     # Blur image, if desired
     blur_sigma = args.blur
     assert blur_sigma >= 0.0, "Untenable blur kernel width"
@@ -355,13 +363,13 @@ def compute_complexities(impath,    # Path to input image file
     
     # Perform masking directly on the image (to destroy details hidden behind the alpha channel)
     if using_alpha_mask and not args.ignore_alpha:
-        img[ alpha_mask <= 0 ] = 0
-    if display_image: imdisplay(img, 'Image')
+        img[ img_mask <= 0 ] = 0
+    if (display_image and is_color): imdisplay(img, 'Image')
     if verbose:
         print('Image Shape:', img.shape)
         print('Channelwise Min/Max')
-        for i in range(3):
-            print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))
+        for i in range(n_channels):
+            print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))  
     
     # Image dimensions and center
     h, w = img.shape[0:2]
@@ -386,21 +394,21 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('Computing image entropy ' + ('(alpha masked)' if using_alpha_mask else ''))  
             if using_alpha_mask:
                 def masked_discrete_shannon(channel, first):
-                    channel = np.copy(channel).astype(int)
+                    channel = skimage.img_as_int(np.copy(channel))
                     _fake_pixel_val, alpha_mask_threshold = -1000, 0
-                    channel[ alpha_mask <= alpha_mask_threshold ] = _fake_pixel_val
+                    channel[ img_mask <= alpha_mask_threshold ] = _fake_pixel_val
                     unique_vals, counts = np.unique(channel, return_counts=True)
                     new_counts = [ c for ii, c in enumerate(counts) if not unique_vals[ii] == _fake_pixel_val ]
                     if first and verbose: print('\tN_pixels before & after masking:', sum(counts), '->', sum(new_counts))
                     return scipy_discrete_shannon_entropy(new_counts, base=np.e)
-                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i], i==0) for i in range(3)])
+                shannon_entropy = np.mean([masked_discrete_shannon(img[:,:,i], i==0) for i in range(n_channels)])
             else:
-                shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(3)])
+                shannon_entropy = np.mean([skimage.measure.shannon_entropy(img[:,:,i], base=np.e) for i in range(n_channels)])
             return shannon_entropy
         add_new(discrete_pixelwise_shannon_entropy(img), 0)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 1: Averaged channel-wise local entropy
     if 1 in complexities_to_use:
         @timing_decorator(args.timing)
@@ -408,18 +416,18 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('Computing local discrete entropies')
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                current_mask_local_ent = alpha_mask if using_alpha_mask else None
+                current_mask_local_ent = img_mask if using_alpha_mask else None
                 le_img = np.array([ skimage.filters.rank.entropy(img[:,:,i], 
                                                                  disk(local_entropy_disk_size),
                                                                  mask=current_mask_local_ent)
-                            for i in range(3) ]).mean(axis=0)
-            if show_locent_image: 
-                imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=alpha_mask)
+                            for i in range(n_channels) ]).mean(axis=0)
+            if (show_locent_image and is_color): 
+                imdisplay(le_img, 'Local Entropies', colorbar=True, cmap='plasma', mask=img_mask)
             return np.mean(le_img)
         add_new(channelwise_local_entropies(img), 1)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 2: High frequency content via weighted average
     # Note: masks, even if present, are not used here, since we would be getting irregular domain harmonics rather than Fourier coefs
     # This does mean, however, that background pixels do still participate in the measure (e.g., a white dewlap on a white bg, will
@@ -428,7 +436,7 @@ def compute_complexities(impath,    # Path to input image file
         @timing_decorator(args.timing)
         def mean_weighted_fourier_coef(img):
             if verbose: print('Computing Fourier images')
-            fourier_images = [ fp.fft2(img[:,:,find]) for find in range(3) ]
+            fourier_images = [ fp.fft2(img[:,:,find]) for find in range(n_channels) ]
             shifted_fourier_images = np.array([ np.fft.fftshift(fourier_image) for fourier_image in fourier_images ])
             shifted_fourier_logmag_image = np.array([ np.log( np.abs(shifted_fourier_image) )
                                                 for shifted_fourier_image in shifted_fourier_images
@@ -441,7 +449,7 @@ def compute_complexities(impath,    # Path to input image file
             index_grid_cen = index_grid_cen / np.max(index_grid_cen) 
             fourier_reweighted_image = (avg_fourier_image * index_grid_cen) / np.sum(index_grid_cen)
             fourier_weighted_mean_coef = np.sum( fourier_reweighted_image )
-            if show_fourier_image:
+            if (show_fourier_image and is_color):
                 imdisplay(avg_fourier_image, 'Fourier Transform', colorbar=True, cmap='viridis')
                 imdisplay(index_grid_cen, 'Fourier-space distance weights', colorbar=True, cmap='gray')
                 # Avoid loss of phase information in order to view image (but note it's ignored in the metric)
@@ -453,7 +461,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(mean_weighted_fourier_coef(img), 2)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 3: Local (intra-)patch covariances
     # Closely related to the distribution of L_2 distance between patches
     # Note: vectorize over the patches? use slogdet
@@ -470,11 +478,11 @@ def compute_complexities(impath,    # Path to input image file
             patches, ps, wt = patches_over_channels(img, local_patch_size, local_covar_wstep)
             # Per patch: (1) extracts window, (2) unfolds it into pixel values, (3) computes the covariance
             if using_alpha_mask:
-                alpha_over_patches = patches_per_channel(alpha_mask, local_patch_size, local_covar_wstep)
+                alpha_over_patches = patches_per_channel(img_mask, local_patch_size, local_covar_wstep)
                 def masked_detcov(i,j):
                     mask_patch = alpha_over_patches[i,j,:,:]
                     if 0 in mask_patch: return 0 # Patches with masked pixels don't contribute
-                    unfolded_patch = patches[:,i,j,:,:].reshape(3, wt)
+                    unfolded_patch = patches[:,i,j,:,:].reshape(n_channels, wt)
                     return scalarize(np.cov( unfolded_patch ))
                 if verbose: 
                     print('\tPatches Size: %s (Mask Size: %s)' % 
@@ -482,24 +490,24 @@ def compute_complexities(impath,    # Path to input image file
                 covariance_mat_dets = [ [ masked_detcov(i,j) for j in range(ps[2]) ] for i in range(ps[1]) ]
             else:
                 if verbose: print('\tPatches Size:', patches.shape)
-                #print( "Patches", [ [ patches[:,i,j,:,:].reshape(3,wt) for j in range(ps[2]) ] for i in range(ps[1]) ] )
-                #print( "covs", [ [ np.cov( patches[:,i,j,:,:].reshape(3, wt) )
+                #print( "Patches", [ [ patches[:,i,j,:,:].reshape(n_channels,wt) for j in range(ps[2]) ] for i in range(ps[1]) ] )
+                #print( "covs", [ [ np.cov( patches[:,i,j,:,:].reshape(n_channels, wt) )
                 #                        for j in range(ps[2]) ] for i in range(ps[1]) ] )
                 #sys.exit(0)
-                covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(3, wt) ))
+                covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(n_channels, wt) ))
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
             _num_corrector = 1.0
             local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
-            if show_loccov_image:
+            if (show_loccov_image and is_color):
                 h, w, c = img.shape
                 resized_local_covar_img = skimage.transform.resize(local_covar_img, output_shape=(h,w), order=3)
                 imdisplay(resized_local_covar_img, 'Local Covariances', cmap = 'viridis', 
-                          colorbar = True, mask = alpha_mask) 
+                          colorbar = True, mask = img_mask) 
             return np.mean(local_covar_img)
         add_new(local_patch_covariance(img), 3)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 4: Average gradient magnitude of the input
     # Note: this computes the second-order derivatives if we're using a gradient image
     # Note: even if we mask the gradient image, the gradient on the boundary will still be high
@@ -508,24 +516,24 @@ def compute_complexities(impath,    # Path to input image file
         def avg_gradient_norm(img):
             if verbose: print('Computing average edginess')
             grad_img = generate_gradient_magnitude_image(img)
-            if show_gradient_img:
+            if (show_gradient_img and is_color):
                 gi_title = "Mean Gradient Magnitude Image" + (" (2nd order)" if use_gradient_image else "")
-                imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True, mask = alpha_mask)
+                imdisplay(grad_img.mean(axis=2), gi_title, cmap='plasma', colorbar=True, mask = img_mask)
             if using_alpha_mask:
-                grad_img[alpha_mask <= 0] = 0
+                grad_img[img_mask <= 0] = 0
             return np.mean(grad_img)
         add_new(avg_gradient_norm(img), 4)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 5: Continuous-space Differential Shannon entropy across pixels
     if 5 in complexities_to_use:
         @timing_decorator(args.timing)
         def cont_pixelwise_diff_ent(img):
             if verbose: print('Computing continuous pixel-wise differential entropy')
-            float_img = skimage.img_as_float(img).reshape(h * w, 3) # list of pixel values
+            float_img = skimage.img_as_float(img).reshape(h * w, n_channels) # list of pixel values
             if using_alpha_mask:
-                unfolded_mask = alpha_mask.reshape(h * w)
+                unfolded_mask = img_mask.reshape(h * w)
                 _str_tmp = "\tMask Sum: " + str(unfolded_mask.sum()) + ", Orig Shape: " + str(float_img.shape)
                 float_img = float_img[ unfolded_mask > 0 ]
                 _str_tmp += ", Masked Shape: " + str(float_img.shape)
@@ -537,7 +545,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(cont_pixelwise_diff_ent(img), 5)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 6: Continuous-space Differential Shannon entropy over patches
     # Note 1: this measure is not invariant to rotations of patches
     # Note 2: for images with large swathes of identical patches, this method can suffer large increases
@@ -552,10 +560,10 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatch windows size:', patches_dse.shape)
             # Gathers unfolded patches across the image
             if using_alpha_mask:
-                alpha_over_patches = patches_per_channel(alpha_mask, diff_ent_patch_size, diff_ent_window_step)
+                alpha_over_patches = patches_per_channel(img_mask, diff_ent_patch_size, diff_ent_window_step)
                 patch_vectors = vectorize_masked_patches(patches_dse, alpha_over_patches, ps[1], ps[2])
             else:
-                patch_vectors = np.array([ patches_dse[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+                patch_vectors = np.array([ patches_dse[:,i,j,:,:].reshape(wt * n_channels) for i in range(ps[1]) for j in range(ps[2]) ])
             # Randomly resample patches to meet maximum number present
             if max_patches_cont_DE < patch_vectors.shape[0]:
                 if verbose: print('\tResampling patch vectors (original size: %s)' % str(patch_vectors.shape))
@@ -569,7 +577,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(patchwise_diff_ent(img), 6)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #>> Measure 7: Global patch-wise covariance logdet
     # Note: this measure is also sensitive to patch orientation (e.g., rotating a patch will affect it)
     if 7 in complexities_to_use:
@@ -582,10 +590,10 @@ def compute_complexities(impath,    # Path to input image file
             if verbose: print('\tPatch windows size:', patchesgc.shape)
             # Gathers unfolded patches across the image
             if using_alpha_mask:
-                alpha_over_patchesgc = patches_per_channel(alpha_mask, global_cov_window_size, global_cov_window_step)
+                alpha_over_patchesgc = patches_per_channel(img_mask, global_cov_window_size, global_cov_window_step)
                 patch_vectors = vectorize_masked_patches(patchesgc, alpha_over_patchesgc, ps[1], ps[2])
             else:
-                patch_vectors = np.array([ patchesgc[:,i,j,:,:].reshape(wt * 3) for i in range(ps[1]) for j in range(ps[2]) ])
+                patch_vectors = np.array([ patchesgc[:,i,j,:,:].reshape(wt * n_channels) for i in range(ps[1]) for j in range(ps[2]) ])
             if verbose: print('\tPatch vectors shape:', patch_vectors.shape)
             # Compute covariance matrix of the unfolded vectors
             global_cov = np.cov( patch_vectors.T )
@@ -600,7 +608,7 @@ def compute_complexities(impath,    # Path to input image file
         add_new(patchwise_global_covar(img), 7)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     #> Measure 8: Pairwise patch EMD (i.e., mean pairwise Wasserstein distance over patches)
     # TODO bugged? doesnt remove alpha masked patches
     if 8 in complexities_to_use:
@@ -613,27 +621,26 @@ def compute_complexities(impath,    # Path to input image file
             # Resize image
             img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, multichannel=True)
             if verbose: print('\tDownscaled image dims:', img.shape)
-            if emd_visualize: imdisplay(img, 'Downscaled img')
+            if (emd_visualize and is_color): imdisplay(img, 'Downscaled img')
             # Extract patches
             patches_emd, ps, wt = patches_over_channels(img, emd_window_size, emd_window_step, floatify=True)
             if verbose: print('\tPatches Shape', patches_emd.shape)
             # CASE 1: using alpha mask
             if using_alpha_mask:
-                if emd_visualize: imdisplay( alpha_mask, 'Original Mask', True )
+                if (emd_visualize and is_color): imdisplay( img_mask, 'Original Mask', True )
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    alpha_mask_ds = skimage.img_as_ubyte(
-                                        skimage.transform.rescale( 
-                                            skimage.img_as_float(skimage.img_as_ubyte(alpha_mask*255)), 
-                                            scale=image_rescaling_factor) )
-                alpha_mask_ds[ alpha_mask_ds >  1e-8 ] = 1
-                alpha_mask_ds[ alpha_mask_ds <= 1e-8 ] = 0
-                if emd_visualize: imdisplay(alpha_mask_ds, 'Downscaled mask', True)
-                alpha_over_patches_emd = patches_per_channel(alpha_mask_ds, emd_window_size, emd_window_step)
+                    img_mask_ds = skimage.transform.rescale( 
+                                            skimage.img_as_float(skimage.img_as_ubyte(img_mask)), 
+                                            scale=image_rescaling_factor)
+                img_mask_ds[ img_mask_ds >  1e-8 ] = 1
+                img_mask_ds[ img_mask_ds <= 1e-8 ] = 0
+                if (emd_visualize and is_color): imdisplay(img_mask_ds, 'Downscaled mask', True)
+                alpha_over_patches_emd = patches_per_channel(img_mask_ds, emd_window_size, emd_window_step)
                 patch_lists = vectorize_masked_patches(patches_emd, alpha_over_patches_emd, ps[1], ps[2], as_list=True)
             # CASE 2: no alpha channel
             else:
-                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(3, wt).T 
+                patch_lists = np.array([ patches_emd[:,i,j,:,:].reshape(n_channels, wt).T 
                                          for i in range(ps[1]) for j in range(ps[2]) ])
             if verbose: print('\tPatch lists shape:', patch_lists.shape)
             # Visualize (random or first few) patches
@@ -646,15 +653,15 @@ def compute_complexities(impath,    # Path to input image file
                     ris = np.random.choice(patch_lists.shape[0], size=n_to_vis, replace=False)
                 else:             
                     ris = np.array( range(n_to_vis) )
-                # Index into list (N_patches x unfolded_window_size x 3)
-                patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, 3)
+                # Index into list (N_patches x unfolded_window_size x n_channels)
+                patches_to_vis = patch_lists[ris, :, :].reshape(n_to_vis, emd_window_size, emd_window_size, n_channels)
                 patch_display(patches_to_vis, nr, nc, show=False, title='EMD Patches', subtitles=ris)
             # Append coordinates if desired
             if coordinate_aware:
                 if verbose: print('\tUsing coordinate-aware calculations')
                 n_patches = patch_lists.shape[0]
                 # Refold vectorized patches back into windows
-                refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, 3)
+                refolded_patches = patch_lists.reshape(n_patches, emd_window_size, emd_window_size, n_channels)
                 # Linear walk from 0 to 1
                 lin_walk = np.linspace(0.0, 1.0, emd_window_size)
                 # Expand linear walk to normalized patch coordinates, and rescale spatial values
@@ -662,7 +669,7 @@ def compute_complexities(impath,    # Path to input image file
                 # Duplicate patches for each image patch
                 coord_patches = np.repeat( patch_of_coords[ np.newaxis, :, : ], n_patches, axis=0 )
                 # Concatenate image patch pixel values with coordinate values
-                patch_lists = np.concatenate( (coord_patches, refolded_patches), axis=3 ).reshape(n_patches, wt, 5)
+                patch_lists = np.concatenate( (coord_patches, refolded_patches), axis=3 ).reshape(n_patches, wt, coord_patches.shape[-1]+n_channels)
                 if verbose: print('\tPatch sizes with appended coords:', patch_lists.shape)
             ## Choose solver ##
             if use_sinkhorn: # Entropy-regularized approximate solver
@@ -712,10 +719,10 @@ def compute_complexities(impath,    # Path to input image file
         add_new(pairwise_wasserstein_distance(img, **emd_args), 8)
 
     #--------------------------------------------------------------------------------------------------------------------#    
-
+    
     # HACK 1: Mask handling for measures > 9
     if using_alpha_mask:
-        mask_pwmm = alpha_mask
+        mask_pwmm = img_mask
     else:
         mask_pwmm = np.ones((h,w), dtype=int)
 
@@ -732,11 +739,11 @@ def compute_complexities(impath,    # Path to input image file
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS,
                     gamma_mu_weight=1.0,
                     gamma_cov_weight=0.0, 
-                    display_intermeds=show_pw_mnt_ptchs, verbose=verbose)
+                    display_intermeds=(show_pw_mnt_ptchs and is_color), verbose=verbose)
         add_new(patchwise_mean_dist(img, mask_pwmm), 9)
 
     #--------------------------------------------------------------------------------------------------------------------#
-
+    
     # Measure 10: moment-matching pairwise distances
     if 10 in complexities_to_use:
         # Don't display the same patches twice
@@ -750,7 +757,7 @@ def compute_complexities(impath,    # Path to input image file
             return pairwise_moment_distances(img, mask, block_cuts=pw_mnt_dist_nonOL_WS, 
                     gamma_mu_weight=args.gamma_mu_weight,
                     gamma_cov_weight=args.gamma_cov_weight, 
-                    display_intermeds=show_pw_mnt_ptchs2, verbose=verbose)
+                    display_intermeds=(show_pw_mnt_ptchs2 and is_color), verbose=verbose)
         add_new(patchwise_moment_dist(img, mask_pwmm), 10)
 
     #--------------------------------------------------------------------------------------------------------------------#
@@ -800,7 +807,7 @@ def compute_complexities(impath,    # Path to input image file
                         block_cuts        = pw_mnt_dist_nonOL_WS, # TODO option for overlapping as well
                         gamma_mu_weight   = None,
                         gamma_cov_weight  = None,
-                        display_intermeds = show_pw_mnt_ptchs_curr, 
+                        display_intermeds = (show_pw_mnt_ptchs_curr and is_color), 
                         verbose           = verbose,
                         mode              = _metric_dict[_p_com] )
             add_new(patchwise_moment_dist_c(img, mask_pwmm), _p_com)
@@ -808,26 +815,26 @@ def compute_complexities(impath,    # Path to input image file
     ### </ Finished computing complexity measures /> ###
 
     #######################################################################################################################
-
+    
     # Minor checks
     assert all([v1 == v2 for v1,v2 in zip(S[1:], computed_names)]), 'Mismatch between intended and computed measures'
 
     # Show images if needed
-    if ( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-         or args.emd_visualize or show_pw_mnt_ptchs):
+    if (( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
+         or args.emd_visualize or show_pw_mnt_ptchs) and is_color):
         plt.show()
 
     ### Print (single image case) and return output ###
-    complexities_strings = list(map(lambda f: '%.4f' % f, complexities))
+    complexities_strings = list(map(lambda f: '%.4e' % f, complexities))
     impath = impath + (" [GradMag]" if use_gradient_image else "")
     # Print results for a single image
     if print_mode == 'single':
         print(impath + (" (Gradient Magnitude)" if use_gradient_image else ""))
         if args.timing:
-            for name, val, time in zip(S[1:], complexities, timings): print('\t%s: %.4f (time: %.2fs)' % (name,val,time))
+            for name, val, time in zip(S[1:], complexities, timings): print('\t%s: %.4e (time: %.2fs)' % (name,val,time))
             print('Total time elapsed:', sum(timings))
         else:
-            for name, val in zip(S[1:], complexities): print('\t%s: %.4f' % (name,val))
+            for name, val in zip(S[1:], complexities): print('\t%s: %.4e' % (name,val))
     # Print results in the multi-image case
     elif print_mode == 'compact':
         print("%s,%s" % (impath,",".join(complexities_strings)))
@@ -843,6 +850,7 @@ def compute_complexities(impath,    # Path to input image file
 ### Arguments based on user input ###
 path = args.input # Path to target
 args_d = { "verbose"            : args.verbose,
+           "is_mspec"           : args.is_mspec,
            "use_gradient_image" : args.use_grad,
            "show_fourier_image" : True if args.show_all else args.show_fourier,
            "show_gradient_img"  : True if args.show_all else args.show_gradient_img,
@@ -854,23 +862,58 @@ args_d = { "verbose"            : args.verbose,
 grad_and_orig = args.use_grad_too # Preparations if doing both gradient and original image
 if grad_and_orig: del args_d['use_gradient_image']
 
-### Case 1: Compute complexities over a folder of images ###
-# Meant to output a CSV
-if os.path.isdir(path):
-    print(','.join(S))
+if (args_d['is_mspec']): ### For multispectral images
+    
+    usables = ['.tif','.txt','.csv']
+    usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
+    _checker = lambda k: any( k.endswith(yy) for yy in usables )
+    
+    if os.path.isdir(path):
+        ### Case 1: Compute complexities over a folder of images ###
+        print(','.join(S))
+        for f in [ f for f in os.listdir(path) if _checker(f) ]:
+            compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
+            if grad_and_orig: # Just did original
+                compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
+                                            use_gradient_image=True, **args_d)
+    elif (path[-4:] == ".csv"):
+        im_stack_filenames = load_csv_data(path)
+        
+        for im_stack in im_stack_filenames:
+            compute_complexities(im_stack, complexities_to_use, print_mode='compact', **args_d)
+            if grad_and_orig:
+                compute_complexities(im_stack, complexities_to_use, print_mode='compact', use_gradient_image=True, **args_d)
+    else:
+        ### Case 2: Compute complexity measure on a single image ###
+        if (not _checker(path)):
+            raise TypeError('Image format is not supported for multispectral image processing.')
+            
+        compute_complexities(path, complexities_to_use, print_mode='single', **args_d)
+        if grad_and_orig:
+            compute_complexities(path, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
+            
+else: ### For color images
+   
     usables = [ '.jpg', '.png' ]
     usables = list(set( usables + [ b.upper() for b in usables ] + [ b.lower() for b in usables ] ))
     _checker = lambda k: any( k.endswith(yy) for yy in usables )
-    for f in [ f for f in os.listdir(path) if _checker(f) ]:
-        compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
-        if grad_and_orig: # Just did original
-            compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
-                                        use_gradient_image=True, **args_d)
-### Case 2: Compute complexity measure on a single image ###
-else: # Single image case
-    compute_complexities(path, complexities_to_use, print_mode='single', **args_d)
-    if grad_and_orig:
-        compute_complexities(path, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
+    
+    if os.path.isdir(path):
+         ### Case 1: Compute complexities over a folder of images ###
+        print(','.join(S))
+        for f in [ f for f in os.listdir(path) if _checker(f) ]:
+            compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact', **args_d)
+            if grad_and_orig: # Just did original
+                compute_complexities(os.path.join(path,f), complexities_to_use, print_mode='compact',
+                                            use_gradient_image=True, **args_d)
+    else:
+        ### Case 2: Compute complexity measure on a single image ###
+        if (not _checker(path)):
+            raise TypeError('Image format is not supported for color image processing.')
+            
+        compute_complexities(path, complexities_to_use, print_mode='single', **args_d)
+        if grad_and_orig:
+            compute_complexities(path, complexities_to_use, print_mode='single', use_gradient_image=True, **args_d)
 
 
 #

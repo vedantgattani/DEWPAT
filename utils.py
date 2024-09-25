@@ -5,8 +5,10 @@ from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D, axes3d
-from skimage import io
+from skimage import io, img_as_float
 from prob import gaussian_prob_divergence
+
+import glob
 
 ### Visualization helpers ###
 
@@ -133,7 +135,7 @@ def patches_over_channels(img, patch_size, window_step, return_meta=True, floati
             img = skimage.img_as_float(img)
     P = np.array([
             patches_per_channel(img[:,:,k], patch_size, window_step)
-            for k in range(3)
+            for k in range(img.shape[2])
         ])
     if return_meta: return P, P.shape, patch_size**2
     return P
@@ -148,13 +150,13 @@ def patches_per_channel(channel, patch_size, window_step):
 def vectorize_single_masked_patch(patches, mask, i, j, wt):
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
-    unfolded_patch = patches[:,i,j,:,:].reshape(wt * 3)
+    unfolded_patch = patches[:,i,j,:,:].reshape(wt * patches.shape[0])
     return unfolded_patch
 
 def vectorize_single_masked_patch_as_list(patches, mask, i, j, wt):
     mask_patch = mask[i,j,:,:]
     if 0 in mask_patch: return None
-    listified_patch = patches[:,i,j,:,:].reshape(3, wt).T
+    listified_patch = patches[:,i,j,:,:].reshape(patches.shape[0], wt).T
     return listified_patch
 
 def vectorize_masked_patches(patches, mask, H, W, as_list=False, flatten=True, remove_none=True):
@@ -186,13 +188,12 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
     Each edge pixel value is divided by `divider` (enforce output in [0,1] + numerical stability).
     If `to_ubyte` is specified True, the output is converted to the ubyte numpy dtype.
     '''
-    @adapt_rgb(each_channel)
-    def cgrad_x(img):
-        return filters.scharr_v(img)
-    @adapt_rgb(each_channel)
-    def cgrad_y(img):
-        return filters.scharr_h(img)
-    Ig_x, Ig_y = cgrad_x(img), cgrad_y(img)
+    Ig_x = np.zeros(img.shape)
+    Ig_y = np.zeros(img.shape)
+    for k in range(img.shape[2]):
+        Ig_x[:,:,k] = filters.scharr_v(img[:,:,k])
+        Ig_y[:,:,k] = filters.scharr_h(img[:,:,k])
+    
     Ig_x_sq, Ig_y_sq = Ig_x * Ig_x, Ig_y * Ig_y
     gradient_img = np.sqrt(Ig_x_sq + Ig_y_sq) / divider # to remain in [0,1]
     # print('GradImg min/max: %.2f/%.2f' % (gradient_img.min(), gradient_img.max()))
@@ -403,6 +404,166 @@ def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_ch
     # R, G, and B are vectors; img is ubyte type.
     return img, R, G, B, orig_mask
 
+def load_color_image(im_path):
+    
+    nChannels = 0
+    image = img_as_float(io.imread(im_path))
+    
+    nChannels = image.shape[2]
+    
+    if (nChannels == 4):
+        im_mask = image[:,:,-1]
+        im_mask[ im_mask <= 0 ] = 0
+        im_mask[ im_mask  > 0 ] = 1
+        image = image[:,:,0:3]
+    else:
+        im_mask = None   
+
+    return image, im_mask
+
+def load_mspec_image(im_path, verbose):
+            
+    if (type(im_path) is list):
+        image,im_mask = load_im_stack(im_path)
+        
+        n_channels = image.shape[2]
+        
+        if (n_channels == 0):
+            raise NameError("No images were found in file: " + im_path)
+        if (verbose):
+            if (im_mask is None):
+                print (str(n_channels) + " images were found. No mask.")
+            else:
+                print (str(n_channels) + " images were found + mask.")
+    else:    
+        file_ext = im_path[-4:]
+
+        if (file_ext == ".txt"):
+            mask_found = 0
+            n_channels = 0
+            im_mask = None
+
+            with open(im_path) as f:
+                im_filenames = f.read().split('\n')
+            
+            image,im_mask = load_im_stack(im_filenames)
+        
+            n_channels = image.shape[2]
+            
+            if (n_channels == 0):
+                raise NameError("No images were found in file: " + im_path)
+            if (verbose):
+                if (im_mask is None):
+                    print (str(n_channels) + " images were found. No mask.")
+                else:
+                    print (str(n_channels) + " images were found + mask.")
+
+        elif (file_ext == ".tif"):
+
+            image = io.imread(im_path)
+            
+            if (image.shape[0] < image.shape[1]) and (image.shape[0] < image.shape[2]):
+                image = np.transpose(image,(1,2,0))
+
+            im_mask = np.ones(image.shape[0:2])
+
+            if (np.any(np.isnan(image[:,:,0]))):
+                im_mask[np.isnan(image[:,:,0])] = 0
+    
+    return image,im_mask
+
+
+def load_im_stack(im_filenames):
+    
+    mask_found = 0
+    n_channels = 0
+    
+    if (len(im_filenames) < 2):
+        raise TypeError('A multispectral image must have at least two layers.')
+    
+    for filename in im_filenames:
+        if not (filename[-4:] == ".png"):
+            raise TypeError('Image format is not supported for multispectral image processing.')
+        temp_im = io.imread(filename)
+
+        if (n_channels == 0):
+            image = temp_im[:,:,0]
+        else:
+            image = np.dstack((image, temp_im[:,:,0]))
+
+        n_channels += 1
+
+        if ((mask_found == False) and (temp_im.shape[2] > 3)):
+            im_mask = temp_im[:,:,-1]
+            im_mask = np.copy(im_mask).astype(int)
+            im_mask[im_mask <= 0] = 0
+            im_mask[im_mask > 0] = 1
+            mask_found = True
+
+    return image, im_mask
+
+
+def load_csv_data(csv_path):
+    
+    file_ext = csv_path[-4:]
+    
+    if (file_ext == ".csv"):
+        csvLines = read_csv_full(csv_path)
+        del csvLines[0]
+               
+        im_filename_stacks = []
+        currStackIndex = -1
+        for line in csvLines:
+            
+            if not (line[2][-4:] == ".png"):
+                raise TypeError('Image format is not supported for multispectral image processing.')
+                
+            if ((int)(line[1]) > currStackIndex):
+                im_filename_stacks.append([line[2]])
+                currStackIndex +=1
+            else:
+                im_filename_stacks[currStackIndex].append(line[2])
+
+    print(len(im_filename_stacks),"image stacks have been found.")
+    
+    return im_filename_stacks
+
+
+def convert_im_stack(im_path):
+    # Accepts directory + image  name without suffix and returns a ndarray where each slice of depth corresponds to 1 multispectral image.
+    # Returns a mask if any of the relevant images in directory have alpha channel (e.g. png images).
+    
+    nChannels = 0
+    mask_found = 0
+    im_mask = None
+    
+    for im_file in glob.glob(im_path+"*"):
+        image = io.imread(im_file)
+        if (nChannels == 0):
+            im_stack = image[:,:,0]
+        else:
+            im_stack = np.dstack((im_stack,image[:,:,0]))
+            
+        nChannels += 1
+        
+        if ((mask_found == 0) and (image.shape[2] > 3)):
+            im_mask = image[:,:,-1]
+            im_mask = np.copy(im_mask).astype(int)
+            im_mask[ im_mask <= 0 ] = 0
+            im_mask[ im_mask  > 0 ] = 1
+            mask_found = 1
+
+    if (nChannels == 0): 
+        raise NameError("No images were found in path: " + im_path)
+    
+    if (im_mask is None):
+        print (str(nChannels) + " images were found. No mask.")
+    else:
+        print (str(nChannels) + " images were found + mask.")
+
+    return im_stack, im_mask
+
+
 ### Block extraction and pairwise moment comparison methods ###
 
 def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_weight, display_intermeds, verbose, mode='central'):
@@ -412,7 +573,7 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
 
     TODO: options for other matrix norms in central moment distance.
     """
-    assert img.max() > 1, "Unexpected pixel scaling encountered"
+    #assert img.max() > 1, "Unexpected pixel scaling encountered"
     if mode != 'central': 
         assert gamma_mu_weight is None and gamma_cov_weight is None
         assert mode in [ 'pw_symmetric_KL',  'pw_W2', 'pw_Hellinger',
@@ -434,14 +595,14 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     ### Now compute the pairwise distances between the moments ###
     # Using masked arrays to get moments for masked patches
     def get_masked_array(patch, patch_mask):
-        unrolled = patch.reshape(-1, 3)
+        unrolled = patch.reshape(-1, img.shape[2])
         _um = patch_mask.reshape(unrolled.shape[0])
         # In numpy, we mask/ignore values where the mask value is True (rather than False)
         # So notice we *invert* the mask, so true lands where zero was
-        unrolled_mask = (np.stack([_um,_um,_um], axis=-1) == 0)
+        unrolled_mask = (np.tile(_um,[img.shape[2],1]).T == 0)
         masked_array = np.ma.masked_where(unrolled_mask, unrolled)
         return masked_array
-    def masked_mean(patch, patch_mask): # ph x pw x 3, ph x pw
+    def masked_mean(patch, patch_mask): # ph x pw x n_channels, ph x pw
         if patch_mask.sum() <= 1: return None # Entirely masked (one pixel insufficient)
         masked_array = get_masked_array(patch, patch_mask)
         if verbose: print('\tNvalid pixels in patch mean:', masked_array.count())
@@ -475,7 +636,7 @@ def pairwise_moment_distances(img, mask, block_cuts, gamma_mu_weight, gamma_cov_
     n_valid = len(means)
     if verbose: print('N_valid', n_valid)
     # Calculate actual pairwise distances based on the moments
-    channel_len = 3
+    channel_len = img.shape[2]
     C_squared = channel_len**2
     N_valid_squared = n_valid**2
     if mode == 'central':
@@ -512,7 +673,7 @@ def blockify(img, mask, block_cuts, verbose):
     if verbose: print('img, mask, block_cuts shapes:', img.shape, mask.shape, block_cuts)
     N_divs_h, N_divs_w = block_cuts
     H, W, C = img.shape
-    assert mask.shape[0] == img.shape[0] and img.shape[1] == img.shape[1]
+    assert mask.shape[0] == img.shape[0] and mask.shape[1] == img.shape[1]
     residual_h, residual_w = H % N_divs_h, W % N_divs_w
     if verbose: print('residuals', residual_h, residual_w)
     if residual_h > 0:
@@ -530,7 +691,7 @@ def blockify(img, mask, block_cuts, verbose):
 
 def channelwise_extract_blocks(I, block_shape):
     Cs = [ skimage.util.shape.view_as_blocks(np.ascontiguousarray(I[:,:,i]), block_shape)
-           for i in range(3) ]
+           for i in range(I.shape[2]) ]
     return np.stack(Cs, axis=-1) # NB_h x NB_w x HB x WB x C
 
 #
