@@ -73,6 +73,14 @@ $`I_G=||\nabla I||_2`$ of that input (or both). Use `--use_grad_only` to use the
 
 #### Examples
 
+- Compute all the complexity measures for a single input image and output the data to a .csv file:
+
+  `python img_complexity.py eg.png >output.csv
+
+- Compute all the complexity measures for all images in a folder and output the data to a .csv file:
+
+  `python img_complexity.py folder >output.csv
+
 - Compute all the complexity measures for a single input image, as well as visualizing the contributions of each pixel for the local pixelwise entropy measure:
 
   `python img_complexity.py eg.png --show_local_covars`
@@ -286,7 +294,7 @@ python seg.py <target> --display --verbose \
 ```bash
 python seg.py <target> --kmeans_k_file_list k.csv --verbose \
               --write_mean_segs --mean_seg_output_dir segs_dir \
-              --seg_stats_output_file cluster_data.csv
+              --seg_mean_stats_output_file cluster_data.csv
 ```
 
 
