@@ -15,15 +15,7 @@ DEWPAT currently exists as a series of Python scripts divided between two branch
 
 - preprocess.py: includes functionality to blur both sRGB and multispectral images to model visual acuity and viewing distance using AcuityView (Caves & Johnsen, 2017).
 
-
-
-# Img-Complexity
-
-This repo contains implementations of several simple measures of image complexity,
-including ones based on frequency content, information entropy, spatial derivatives, and differences in local statistical moments.
-Some basic visualization methods are also present.
-
-## Requirements
+# Requirements
 
 Requires: scikit-image, numpy, matplotlib, scikit-learn, and scipy.
 An easy way to obtain them is via the conda environment specified in `env.yaml`.
@@ -32,6 +24,20 @@ Create environment: `conda env create -f env.yaml`.
 
 Activate environment: `source activate imcom` or `conda activate imcom`.
 (On Windows, just `activate imcom`).
+
+# General usage
+
+The general usage is as follows: `python <script_name.py> <file.extension or input folder> --usage_specific_argument <output.csv>`
+
+We note that if users wish to run scripts using default algorithm parameters (e.g., patch sizes, bin numbers, etc.) then they can simply run commands in the terminal. If users wish to change default parameters, they first need to find and edit the parameters in the scripts themselves. See the main text for details about default parameters.
+
+
+# img_complexity.py
+
+This script contains implementations of several simple measures of image complexity,
+including ones based on frequency content, information entropy, spatial derivatives, and differences in local statistical moments.
+Some basic visualization methods are also present.
+
 
 ## Usage
 
@@ -44,12 +50,6 @@ Run `python img_complexity.py --help` to print detailed usage help from the scri
 You can display intermediate results/images for computations that support it.
 For instance, `--show_local_ents` displays a color map with local estimated patch entropies over the image.
 
-#### Gradient Image
-
-The metrics can either be computed on an input image $`I`$ or on the per-channel *gradient magnitude image*
-$`I_G=||\nabla I||_2`$ of that input (or both).
-
-Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
 
 #### Alpha Channel Masking
 
@@ -57,15 +57,21 @@ Most measures are able to account for the presence of an alpha channel mask, all
 In the patch-based estimators, any patch with a masked pixel is ignored. 
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
+
 #### Preprocessing
 
-There are a few preprocessing options:
+There are a few preprocessing options within img_complexity.py (not including the acuity blurring done through preprocess.py in the dev branch):
 
 - **Greyscale**: passing `--greyscale human` will convert the image to greyscale via channel weightings based on human perceptual weightings, while `--greyscale avg` will use uniform weights (average over channels). Important: note that the determinant of the covariance becomes degenerate (singular) for a scalar image (since the channels have no covariance in this case); therefore *trace* rather than *determinant* is taken in those cases.
 
 - **Resizing**: for instance, passing `--resize 0.5` halves the dimensions of the input image for all complexities. Note that passing `--resize` overrides the value for `--emd_downscaling`, which applies only to the pairwise Wasserstein metric.
 
 - **Blurring**: passing `--blur 5`, for instance, will low-pass filter the image with a Gaussian of standard deviation 5. Note that resizing happens *before* blurring, so choose the standard deviation with this in mind.
+
+- **Gradient Image**: The metrics can either be computed on an input image $`I`$ or on the per-channel *gradient magnitude image*
+$`I_G=||\nabla I||_2`$ of that input (or both).
+
+Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
 
 #### Examples
 
@@ -205,7 +211,9 @@ By default, this method utilizes *non-overlapping* patches as well and sets $`\g
 Computes the sum of the absolute values of DWT detail coefficients $`c`$ extracted from the image (see [this page](https://en.wikipedia.org/wiki/Discrete_wavelet_transform) for more details about DWT): The coefficients used correspond to a subset $`C`$ of the horizontal, vertical and diagonal coefficients.
 By default, this subset corresponds to the largest 1% coefficients. 4 levels of DWT are applied using the Haar mother wavelet.
 
-## Visualization
+
+
+# vis.py
 
 The file `vis.py` includes several visualization capabilities, for understanding pixel value distributions. These options include:
 
@@ -237,9 +245,14 @@ via `--write_1d_histo_vals --output_file histo_output.csv`.
 
 For complete details, run `python vis.py --help`.
 
-## Clustering and Segmentation
+NOTE: if you want to change the bin numbers for the histogram, find the nbins=75 in the vis.py script and change the number to the desired bin number. The manual colour bar includes 14 seperate colours, so we recommend this as the minimum. 
 
-The file `seg.py` includes some clustering/segmentation capabilities in pixel space.
+
+# Clustering and Segmentation
+
+Note that for most up-to-date functionality, users should use seg.py in the dev branch.
+
+The file `seg.py` includes some clustering/segmentation capabilities in pixel space. 
 It also includes transition matrix analysis calculations.
 
 Run `python seg.py --help` gives a complete list of possible options. 
@@ -277,6 +290,18 @@ python seg.py <target> --kmeans_k_file_list k.csv --verbose \
               --write_mean_segs --mean_seg_output_dir segs_dir \
               --seg_stats_output_file cluster_data.csv
 ```
+
+
+- Segments the image with k-means using `k` value of 4, writes the median segmented images to `med_segs_dir`, writes a csv of cluster data to `cluster_med_data.csv`, and does not print the transition matrix analysis calculations:
+
+```bash
+python seg.py <target> --labeller kmeans --kmeans_k 4 --verbose \
+              --write_median_segs --median_seg_output_dir med_segs_dir \
+              --seg_median_stats_output_file med_segs.csv \
+              --no_print_transitions
+```
+
+
 
 ## Acknowledgements
 
