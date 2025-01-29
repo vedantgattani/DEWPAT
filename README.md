@@ -310,8 +310,6 @@ Usage is as follows `python preprocess.py <input image or folder> <.csv> <output
 
   `python preprocess.py images_to_blur acuity.csv blur_output --verbose`
 
-- Segments the image with k-means using
-`python preprocess.py blur_full blur_full.csv blur_full_out --verbose`
 
 ## Acknowledgements
 
