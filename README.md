@@ -69,9 +69,7 @@ There are a few preprocessing options within img_complexity.py (not including th
 - **Blurring**: passing `--blur 5`, for instance, will low-pass filter the image with a Gaussian of standard deviation 5. Note that resizing happens *before* blurring, so choose the standard deviation with this in mind.
 
 - **Gradient Image**: The metrics can either be computed on an input image $`I`$ or on the per-channel *gradient magnitude image*
-$`I_G=||\nabla I||_2`$ of that input (or both).
-
-Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
+$`I_G=||\nabla I||_2`$ of that input (or both). Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
 
 #### Examples
 
