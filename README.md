@@ -1,3 +1,21 @@
+# General overview statement
+
+DEWPAT currently exists as a series of Python scripts divided between two branches. Note that both branches should technically contain all of the scripts, but for best and most up to date functionality you should use the script from the branch designated below.
+
+### master branch
+
+- img_complexity.py: main script that includes functionality to compute and visualize complexity across both sRGB and multispectral images. Note that if using mspec images, need to run --mspec along with other arguments
+
+- vis.py: includes visualization options (including 1D colour histogram) for sRGB images only
+
+
+### dev branch
+
+- seg.py: includes functionality to segment, visualize, and output colour statistics for sRGB images only
+
+- preprocess.py: includes functionality to blur both sRGB and multispectral images to model visual acuity and viewing distance using AcuityView (Caves & Johnsen, 2017).
+
+
 # Img-Complexity
 
 This repo contains implementations of several simple measures of image complexity,
