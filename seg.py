@@ -2,7 +2,7 @@ import os, sys, utils, argparse, sklearn, skimage, numpy as np, numpy.random as 
 import warnings, matplotlib.pyplot as plt, csv
 from skimage import data, segmentation, color
 from skimage.color import rgb2hsv
-from skimage.future import graph
+from skimage import graph
 from sklearn import cluster
 from scipy import interpolate
 from collections import Counter
@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--mspec', dest='is_mspec', action='store_true',
         help='Whether to treat the input as a multispectral image')
     ### Image preprocessing
-    parser.add_argument('--resize', type=float, default=0.5,
+    parser.add_argument('--resize', type=float, default=1.0,
         help='Specify scalar resizing. E.g., 0.5 halves the image size; 2 doubles it. (default: 0.5)')
     parser.add_argument('--blur', type=float, default=1.0,
         help='Specify Gaussian blur standard deviation applied to the image (default: 1)')
@@ -226,11 +226,11 @@ def main_helper(img_path, args):
         running_resize = True
         if args.verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
         img = skimage.transform.rescale(img, scale=resize_factor_main,
-                anti_aliasing=True, multichannel=True)
+                anti_aliasing=True, channel_axis=-1)
         img = utils.conv_to_ubyte(img)
         if (img_mask is not None):
             img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main,
-                anti_aliasing=True, multichannel=False)
+                anti_aliasing=True, channel_axis=-1)
             img_mask = utils.conv_to_ubyte(img_mask)
             img_mask[ img_mask > 0] = 1
             img_mask[ img_mask <= 0] = 0

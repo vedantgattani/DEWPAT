@@ -305,12 +305,12 @@ def compute_complexities(impath,    # Path to input image file
         running_resize = True
         if verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
         img = skimage.transform.rescale(img, scale=resize_factor_main, 
-                anti_aliasing=True, multichannel=True)
+                anti_aliasing=True, channel_axis=-1)
         img = conv_to_ubyte(img)
         if verbose: print("Resized dims:", img.shape)
         if (img_mask is not None):
             img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main, 
-                anti_aliasing=True, multichannel=False)
+                anti_aliasing=True, channel_axis=-1)
             img_mask[ img_mask > 0] = 1
             img_mask[ img_mask <= 0] = 0
             if (False and is_color):
@@ -319,7 +319,6 @@ def compute_complexities(impath,    # Path to input image file
                 plt.show()
                    
     # Handle alpha transparency
-    
     using_alpha_mask = not (img_mask is None)
     if using_alpha_mask:
         if (False and is_color): # Display mask
@@ -369,7 +368,7 @@ def compute_complexities(impath,    # Path to input image file
         print('Image Shape:', img.shape)
         print('Channelwise Min/Max')
         for i in range(n_channels):
-            print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))  
+            print(i, 'Min:', np.min(img[:,:,i]), '| Max:', np.max(img[:,:,i]))  
     
     # Image dimensions and center
     h, w = img.shape[0:2]
@@ -619,7 +618,7 @@ def compute_complexities(impath,    # Path to input image file
             assert metric in ['euclidean', 'sqeuclidean'], "Underlying metric must be 'euclidean' or 'sqeuclidean'"
             if verbose: print('\tImage dims', img.shape)
             # Resize image
-            img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, multichannel=True)
+            img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, channel_axis=-1)
             if verbose: print('\tDownscaled image dims:', img.shape)
             if (emd_visualize and is_color): imdisplay(img, 'Downscaled img')
             # Extract patches
