@@ -1,19 +1,19 @@
 # General overview statement
 
-DEWPAT currently exists as a series of Python scripts divided between two branches. Note that both branches should technically contain all of the scripts, but for best and most up to date functionality you should use the script from the branch designated below.
+DEWPAT currently exists as a series of Python scripts divided between two branches. Note that both branches should technically contain all of the scripts, but for the best and most up-to-date functionality, you should use the script from the branch designated below.
 
 ### master branch
 
-- img_complexity.py: main script that includes functionality to compute and visualize complexity across both sRGB and multispectral images. Note that if using mspec images, need to run --mspec along with other arguments
+- `img_complexity.py`: main script that includes functionality to compute and visualize complexity across both sRGB and multispectral images. Note that if using mspec images, you need to run `--mspec` along with other arguments.
 
-- vis.py: includes visualization options (including 1D colour histogram) for sRGB images only
+- `vis.py`: includes visualization options (including 1D colour histogram) for sRGB images only.
 
 
 ### dev branch
 
-- seg.py: includes functionality to segment, visualize, and output colour statistics for sRGB images only
+- `seg.py`: includes functionality to segment, visualize, and output colour statistics for sRGB images only.
 
-- preprocess.py: includes functionality to blur both sRGB and multispectral images to model visual acuity and viewing distance using AcuityView (Caves & Johnsen, 2017).
+- `preprocess.py`: includes functionality to blur both sRGB and multispectral images to model visual acuity and viewing distance using AcuityView (Caves & Johnsen, 2017).
 
 # Requirements
 
@@ -25,11 +25,15 @@ Create environment: `conda env create -f env.yaml`.
 Activate environment: `source activate imcom` or `conda activate imcom`.
 (On Windows, just `activate imcom`).
 
+You should now be able to run the commands in the main folder.
+
+We also include a more comprehensive example of a working conda environment in `misc/environment-example.yml`, to consult for exact versions if needed.
+
 # General usage
 
 The general usage is as follows: `python <script_name.py> <file.extension or input folder> --usage_specific_argument <output.csv>`
 
-We note that if users wish to run scripts using default algorithm parameters (e.g., patch sizes, bin numbers, etc.) then they can simply run commands in the terminal. If users wish to change default parameters, they first need to find and edit the parameters in the scripts themselves. See the main text for details about default parameters.
+We note that if users wish to run scripts using default algorithm parameters (e.g., patch sizes, bin numbers, etc.) then they can simply run commands in the terminal. If users wish to change default parameters, they first need to find and edit the parameters in the scripts themselves, if those parameters are not accessible via the command-line interface. See the main text for details about default parameters.
 
 
 # img_complexity.py
@@ -53,14 +57,14 @@ For instance, `--show_local_ents` displays a color map with local estimated patc
 
 #### Alpha Channel Masking
 
-Most measures are able to account for the presence of an alpha channel mask, allowing you to run the measures on a ROI rather than the entire image. A simple way to include an alpha mask is to remove the background beforehand (i.e., using photoshop), and then save the image as a .png. As a rule of thumb, png images always have an alpha color channel (this is why png images can have transparent backgrounds).
+Most measures are able to account for the presence of an alpha channel mask, allowing you to run the measures on an ROI rather than the entire image. A simple way to include an alpha mask is to remove the background beforehand (i.e., using photoshop), and then save the image as a .png. As a rule of thumb, png images always have an alpha color channel (this is why png images can have transparent backgrounds).
 In the patch-based estimators, any patch with a masked pixel is ignored. 
 The alpha channel can be ignored with the flag `--ignore_alpha`.
 
 
 #### Preprocessing
 
-There are a few preprocessing options within img_complexity.py (not including the acuity blurring done through preprocess.py in the dev branch):
+There are a few preprocessing options within img_complexity.py (not including the acuity blurring done through `preprocess.py` in the dev branch):
 
 - **Greyscale**: passing `--greyscale human` will convert the image to greyscale via channel weightings based on human perceptual weightings, while `--greyscale avg` will use uniform weights (average over channels). Important: note that the determinant of the covariance becomes degenerate (singular) for a scalar image (since the channels have no covariance in this case); therefore *trace* rather than *determinant* is taken in those cases.
 
@@ -69,23 +73,23 @@ There are a few preprocessing options within img_complexity.py (not including th
 - **Blurring**: passing `--blur 5`, for instance, will low-pass filter the image with a Gaussian of standard deviation 5. Note that resizing happens *before* blurring, so choose the standard deviation with this in mind.
 
 - **Gradient Image**: The metrics can either be computed on an input image $`I`$ or on the per-channel *gradient magnitude image*
-$`I_G=||\nabla I||_2`$ of that input (or both). Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
+$`I_G= \lVert \nabla I \rVert_2`$ of that input (or both). Use `--use_grad_only` to use the gradient image and `--use_grad_too` to compute the measures on *both* the original input and its gradient image.
 
 #### Examples
 
 - Compute all the complexity measures for a single input image and output the data to a .csv file:
 
-  `python img_complexity.py eg.png >output.csv
+  `python img_complexity.py eg.png > output.csv`
 
 - Compute all the complexity measures for all images in a folder and output the data to a .csv file:
 
-  `python img_complexity.py folder >output.csv
+  `python img_complexity.py folder > output.csv`
 
 - Compute all the complexity measures for a single input image, as well as visualizing the contributions of each pixel for the local pixelwise entropy measure:
 
   `python img_complexity.py eg.png --show_local_covars`
 
-- Compute only the patch-wise differential entropy measure and the weighed Fourier measure, on both the input image and its gradient image, for every image in the input folder:
+- Compute only the patch-wise differential entropy measure and the weighted Fourier measure, on both the input image and its gradient image, for every image in the input folder:
 
   `python img_complexity.py eg_folder --diff_shannon_entropy_patches --weighted_fourier --use_grad_too`
 
@@ -148,7 +152,7 @@ Note that trace instead of determinant is used in the greyscale case.
 
 Computes the mean value of the per-channel gradient magnitude over the image; i.e.,
 ```math
-\mathcal{G}(I) = \frac{1}{|C|\,|V_c|} \sum_{c\in C} \sum_{s\in V_c} ||\nabla I(s)||_2
+\mathcal{G}(I) = \frac{1}{\lvert C\rvert\,\lvert V_c \rvert} \sum_{c\in C} \sum_{s\in V_c} \lVert \nabla I(s) \rVert_2
 ```
 
 ### Pixel-wise Differential Entropy
@@ -181,14 +185,14 @@ Measures the average Wasserstein distance (also called the Earth Mover's Distanc
 ```math
 \mathcal{D}_\mathcal{W}(I) = \frac{1}{|P_C|^2} \sum_{p_c\in P_C}\sum_{q_c\in P_C} \mathcal{W}_\rho(p_c,q_c)
 ```
-where $`\mathcal{W}_\rho`$ is the Wasserstein distance of order $`\rho`$ and $`P_C`$ is the set of coordinate-appended image patches such that for $`p_c\in P_C`$, each $`\nu\in p_c`$ is a vector $`\nu=(x_\ell, y_\ell, v_{p,1}, v_{p,2}, v_{p,3})`$ where the first two values denote the local coordinates of the pixel within the patch and the latter three are the pixel values at that position.
+where $`\mathcal{W}_\rho`$ is the Wasserstein distance of order $`\rho`$ and $`P_C`$ is the set of coordinate-appended image patches such that for $`p_c\in P_C`$, each $`\nu\in p_c`$ is a vector $`\nu=(x_\ell, y_\ell, v_{p,1}, v_{p,2}, v_{p,3})`$ where the first two values denote the local coordinates of the pixel within the patch and the latter three are the pixel values at that position. In practice, to enable tractability, only a subset of $`q_c`$'s are used and, by default, the image is shrunk to a smaller size.
 
 ### Pairwise Distance between Patch Means
 
 Computes the average pairwise distance between the first moments (means) of the patches across the image:
 ```math
 \mathcal{D}_{\mathcal{M},1}(I) = \frac{1}{|C|\,|P|^2} \sum_{p_i,p_j\in P}
-|| \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2
+\lVert \widehat{\mu}(p_i) - \widehat{\mu}(p_j) \rVert_2
 ```
 where $`\widehat{\mu}(p)\in\mathbb{R}^3`$ is the mean pixel value over patch $`p`$.
 
@@ -199,23 +203,24 @@ By default, this method utilizes *non-overlapping* patches (as do the other dive
 This measure is similar to the one just above, except that it considers the second moment (the covariance) as well:
 ```math
 \mathcal{D}_{\mathcal{M},2}(I) = \frac{1}{|P|^2} \sum_{p_i,p_j\in P}
-\frac{\gamma_\mu}{|C|}   || \widehat{\mu}(p_i) - \widehat{\mu}(p_j) ||_2 +
-\frac{\gamma_C}{|C|^2} || \widehat{\Sigma}(p_i) - \widehat{\Sigma}(p_j) ||_{1,1/2}
+\frac{\gamma_\mu}{|C|}   \lVert \widehat{\mu}(p_i) - \widehat{\mu}(p_j) \rVert_2 +
+\frac{\gamma_C}{|C|^2} \lVert \widehat{\Sigma}(p_i) - \widehat{\Sigma}(p_j) \rVert_{1,1/2}
 ```
-where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`||M||_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.
+where $`\widehat{\Sigma}(p)\in\mathbb{R}^{3\times 3}`$ is the covariance matrix of pixel values over the patch $`p`$ and $`\lVert M \rVert_{1,1/2} = \sqrt{\sum_{k,\ell} |M_{k\ell}| }`$.
 
 We can also compute the pairwise distance based on these moments, using distributional divergences. 
 These correspond to Gaussian (maximum entropy) assumptions on the pixel distributions per patch 
     (i.e., the minimum information assumption given the moments).
-This includes options for the Jeffrey's (symmetric KL) divergence, the Wasserstein-2 metric, the squared Hellinger distance, the Bhattacharyya distance, and the Forstner-Moonen Abou-Moustafa-Torres-Ferries (FM-ATF) density metric (see "Designing a Metric for the Difference Between Gaussian Densities"). 
+This includes options for the Jeffrey's (symmetric KL) divergence, the Wasserstein-2 metric, the squared Hellinger distance, the Bhattacharyya distance, and the Forstner-Moonen Abou-Moustafa-Torres-Ferries (FM-ATF) density metric (see "Designing a Metric for the Difference Between Gaussian Densities", Abou-Moustafa et al., 2010). 
 See the `--pwg_*` options.
 
 By default, this method utilizes *non-overlapping* patches as well and sets $`\gamma_C=\gamma_\mu=1`$.
 
 ### DWT coefficients
 
-Computes the sum of the absolute values of DWT detail coefficients $`c`$ extracted from the image (see [this page](https://en.wikipedia.org/wiki/Discrete_wavelet_transform) for more details about DWT): The coefficients used correspond to a subset $`C`$ of the horizontal, vertical and diagonal coefficients.
-By default, this subset corresponds to the largest 1% coefficients. 4 levels of DWT are applied using the Haar mother wavelet.
+Computes the sum of the absolute values of DWT detail coefficients $`c`$ extracted from the image (see [this page](https://en.wikipedia.org/wiki/Discrete_wavelet_transform) for more details about DWT). The coefficients used correspond to a subset $`C`$ of the horizontal, vertical and diagonal coefficients.
+By default, this subset corresponds to the largest 1% coefficients. 
+Four levels of DWT are applied using the Haar mother wavelet.
 
 
 
@@ -256,7 +261,7 @@ NOTE: if you want to change the bin numbers for the histogram, find the nbins=75
 
 # Clustering and Segmentation
 
-Note that for most up-to-date functionality, users should use seg.py in the dev branch.
+Note that for most up-to-date functionality, users should use `seg.py` in the dev branch.
 
 The file `seg.py` includes some clustering/segmentation capabilities in pixel space. 
 It also includes transition matrix analysis calculations.
