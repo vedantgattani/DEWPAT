@@ -1,4 +1,4 @@
-import os, sys, numpy as np, skimage, argparse, warnings
+import os, sys, numpy as np, skimage, argparse, warnings, random
 import matplotlib.pyplot as plt, entropy_estimators as EE_cont
 from scipy import fftpack as fp
 from skimage.morphology import disk
@@ -123,7 +123,7 @@ group_p.add_argument('--emd_ignore_coords', action='store_true',
     help='Specify to avoid appending local normalized spatial coordinates to patch elements')
 group_p.add_argument('--squared_euc_metric', action='store_true',
     help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
-group_p.add_argument('--emd_downscaling', type=float, default=0.2,
+group_p.add_argument('--emd_downscaling', type=float, default=0.25,
     help='Specify image downscaling factor for EMD calculations')
 group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
     help='Specify Sinkhorn entropy regularization weight coefficient')
@@ -245,8 +245,9 @@ def compute_complexities(impath,    # Path to input image file
         global_cov_aff_trans=False, # Whether to affinely transform the output logdet covariances
         global_cov_affine_prm=100,  # Parameter used in affine transform for global patch-wise logdet covariances
         # Pairwise EMD parameters
-        emd_window_size=24,         # Window size for pairwise EMD
-        emd_window_step=16,         # Window step for pairwise EMD
+        emd_window_size=64,         # Window size for pairwise EMD
+        emd_window_step=64,         # Window step for pairwise EMD
+        emd_random_subsample=1,    # Each patch is only compared to this many other patches (for efficiency)
         # Mean and moment distances parameters
         #pw_mnt_dist_nonOL_WS=(3,4), # Non-overlapping patches to segment the image into for moment distances
         ### Visualization Options ###
@@ -616,12 +617,15 @@ def compute_complexities(impath,    # Path to input image file
         def pairwise_wasserstein_distance(img, use_sinkhorn, sinkhorn_gamma, coordinate_aware, 
                 metric, image_rescaling_factor, coordinate_scale, emd_visualize):
             assert metric in ['euclidean', 'sqeuclidean'], "Underlying metric must be 'euclidean' or 'sqeuclidean'"
+            if not use_sinkhorn:
+                print('WARNING: not using efficient Sinkhorn implementation (--sinkhorn_emd)')
             if verbose: print('\tImage dims', img.shape)
             # Resize image
             img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, channel_axis=-1)
             if verbose: print('\tDownscaled image dims:', img.shape)
             if (emd_visualize and is_color): imdisplay(img, 'Downscaled img')
             # Extract patches
+            if verbose: print(f'\tEMD window size / step: {emd_window_size} / {emd_window_step}')
             patches_emd, ps, wt = patches_over_channels(img, emd_window_size, emd_window_step, floatify=True)
             if verbose: print('\tPatches Shape', patches_emd.shape)
             # CASE 1: using alpha mask
@@ -688,12 +692,23 @@ def compute_complexities(impath,    # Path to input image file
                 a, b = ot.unif(wt), ot.unif(wt)
                 # Compute EMD
                 emd_final = solver(a,b,M)
-                if type(emd_final) is float: return emd_final
-                else: return emd_final[0]
+                if type(emd_final) is float: 
+                    return emd_final
+                elif emd_final.size == 1:
+                    return float(emd_final)
+                else: 
+                    return emd_final[0]
             # Compute EMDs
             if verbose: print('\tComputing pairwise EMDs')
-            emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, j == i+1) 
-                              for i in range(n) for j in range(i+1,n) ])
+            if not emd_random_subsample is None:
+                def get_rsubset(k):
+                    return random.sample( [ p for p in range(0,n) if not (p == k) ], 
+                                          emd_random_subsample)
+                emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, k==0)
+                                  for i in range(n) for (k,j) in enumerate(get_rsubset(i)) ])
+            else:
+                emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, j == i+1) 
+                                  for i in range(n) for j in range(i+1,n) ])
             if verbose: 
                 _vss = ( len(emds), np.min(emds), np.max(emds), np.std(emds) )
                 print('\tNum/Min/Max/Stdev EMD values: %d/%.2f/%.2f/%.2f' % _vss)
@@ -820,7 +835,7 @@ def compute_complexities(impath,    # Path to input image file
 
     # Show images if needed
     if (( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-         or args.emd_visualize or show_pw_mnt_ptchs) and is_color):
+         or args.emd_visualize or show_pw_mnt_ptchs or show_dwt) and is_color):
         plt.show()
 
     ### Print (single image case) and return output ###
