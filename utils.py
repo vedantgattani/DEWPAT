@@ -5,7 +5,7 @@ from skimage import filters
 from skimage.color.adapt_rgb import adapt_rgb, each_channel
 from timeit import default_timer as timer
 from mpl_toolkits.mplot3d import Axes3D, axes3d
-from skimage import io, img_as_float
+from skimage import io, img_as_float, img_as_ubyte
 from prob import gaussian_prob_divergence
 
 import glob
@@ -203,11 +203,11 @@ def generate_gradient_magnitude_image(img, divider=2, to_ubyte=False):
             gradient_img = skimage.img_as_ubyte(gradient_img)
     return gradient_img
 
-def gaussian_blur(image, sigma):
+def gaussian_blur(image, sigma, channel_axis = -1):
     '''
     Performs Gaussian blurring on the input with standard deviation sigma.
     '''
-    return np.clip(filters.gaussian(image, sigma=sigma, multichannel=True), 0.0, 1.0)
+    return np.clip(filters.gaussian(image, sigma=sigma, channel_axis=channel_axis), 0.0, 1.0)
 
 def to_perceptual_greyscale(img):
     from skimage.color import rgb2gray
@@ -405,12 +405,10 @@ def load_helper(image_path, verbose=True, blur_sigma=None, apply_alpha_to_rgb_ch
     return img, R, G, B, orig_mask
 
 def load_color_image(im_path):
-    
-    nChannels = 0
-    image = img_as_float(io.imread(im_path))
-    
+    #nChannels = 0
+    #image = img_as_float(io.imread(im_path))
+    image = img_as_ubyte(io.imread(im_path)) 
     nChannels = image.shape[2]
-    
     if (nChannels == 4):
         im_mask = image[:,:,-1]
         im_mask[ im_mask <= 0 ] = 0
@@ -418,7 +416,6 @@ def load_color_image(im_path):
         image = image[:,:,0:3]
     else:
         im_mask = None   
-
     return image, im_mask
 
 def load_mspec_image(im_path, verbose):

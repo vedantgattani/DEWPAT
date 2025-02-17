@@ -1,4 +1,4 @@
-import os, sys, numpy as np, skimage, argparse, warnings
+import os, sys, numpy as np, skimage, argparse, warnings, random
 import matplotlib.pyplot as plt, entropy_estimators as EE_cont
 from scipy import fftpack as fp
 from skimage.morphology import disk
@@ -117,13 +117,17 @@ group_p.add_argument('--local_cov_patch_size', type=int, default=20,
     help='Patch size for local covariance calculations')
 group_p.add_argument('--local_covar_wstep', type=int, default=5,
     help='The step-size (stride) for the local covariance calculation')
+group_p.add_argument('--local_covar_no_shift_positive', action='store_true',
+    help='No offset added before the log in the local covariance calculation')
+group_p.add_argument('--global_covar_no_shift_positive', action='store_true',
+    help='No offset added before the log in the global covariance calculation')
 group_p.add_argument('--sinkhorn_emd', action='store_true', 
     help='Specify to compute the entropy-regularized Sinkhorn approximation, rather than the exact EMD via linear programming')
 group_p.add_argument('--emd_ignore_coords', action='store_true',
     help='Specify to avoid appending local normalized spatial coordinates to patch elements')
 group_p.add_argument('--squared_euc_metric', action='store_true',
     help='Specify to use squared Euclidean rather than Euclidean underlying metric for the EMD')
-group_p.add_argument('--emd_downscaling', type=float, default=0.2,
+group_p.add_argument('--emd_downscaling', type=float, default=0.25,
     help='Specify image downscaling factor for EMD calculations')
 group_p.add_argument('--sinkhorn_regularizer', type=float, default=0.25,
     help='Specify Sinkhorn entropy regularization weight coefficient')
@@ -245,8 +249,9 @@ def compute_complexities(impath,    # Path to input image file
         global_cov_aff_trans=False, # Whether to affinely transform the output logdet covariances
         global_cov_affine_prm=100,  # Parameter used in affine transform for global patch-wise logdet covariances
         # Pairwise EMD parameters
-        emd_window_size=24,         # Window size for pairwise EMD
-        emd_window_step=16,         # Window step for pairwise EMD
+        emd_window_size=64,         # Window size for pairwise EMD
+        emd_window_step=64,         # Window step for pairwise EMD
+        emd_random_subsample=1,    # Each patch is only compared to this many other patches (for efficiency)
         # Mean and moment distances parameters
         #pw_mnt_dist_nonOL_WS=(3,4), # Non-overlapping patches to segment the image into for moment distances
         ### Visualization Options ###
@@ -294,7 +299,7 @@ def compute_complexities(impath,    # Path to input image file
         # UGLY FIX: NEED TO CLEAN UP
         if (type(impath) is list):
             impath = impath[0]
-    
+    # Number of channels in the input
     n_channels = img.shape[2]
 
     # Downscale image, if desired
@@ -305,12 +310,12 @@ def compute_complexities(impath,    # Path to input image file
         running_resize = True
         if verbose: print("Orig shape", img.shape, "| Resizing by", resize_factor_main)
         img = skimage.transform.rescale(img, scale=resize_factor_main, 
-                anti_aliasing=True, multichannel=True)
+                anti_aliasing=True, channel_axis=-1)
         img = conv_to_ubyte(img)
         if verbose: print("Resized dims:", img.shape)
         if (img_mask is not None):
             img_mask = skimage.transform.rescale(img_mask, scale=resize_factor_main, 
-                anti_aliasing=True, multichannel=False)
+                anti_aliasing=True, channel_axis=-1)
             img_mask[ img_mask > 0] = 1
             img_mask[ img_mask <= 0] = 0
             if (False and is_color):
@@ -319,7 +324,6 @@ def compute_complexities(impath,    # Path to input image file
                 plt.show()
                    
     # Handle alpha transparency
-    
     using_alpha_mask = not (img_mask is None)
     if using_alpha_mask:
         if (False and is_color): # Display mask
@@ -369,7 +373,7 @@ def compute_complexities(impath,    # Path to input image file
         print('Image Shape:', img.shape)
         print('Channelwise Min/Max')
         for i in range(n_channels):
-            print(i, 'Min:', np.min(img[:,:,i]),'| Max:',np.max(img[:,:,i]))  
+            print(i, 'Min:', np.min(img[:,:,i]), '| Max:', np.max(img[:,:,i]))  
     
     # Image dimensions and center
     h, w = img.shape[0:2]
@@ -496,8 +500,8 @@ def compute_complexities(impath,    # Path to input image file
                 #sys.exit(0)
                 covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(n_channels, wt) ))
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
-            _num_corrector = 1.0
-            local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
+            args.local_covar_offset = 0.0 if args.local_covar_no_shift_positive else 1.0
+            local_covar_img = np.log(np.array(covariance_mat_dets) + args.local_covar_offset + 1e-8)
             if (show_loccov_image and is_color):
                 h, w, c = img.shape
                 resized_local_covar_img = skimage.transform.resize(local_covar_img, output_shape=(h,w), order=3)
@@ -600,7 +604,14 @@ def compute_complexities(impath,    # Path to input image file
             def _strace(c):
                 t = np.trace(c)
                 return np.sign(t), t
-            scalarizer = (lambda c: np.linalg.slogdet(c)) if not is_scalar else (lambda c: _strace(c))
+            args.global_covar_offset = 0.0 if args.global_covar_no_shift_positive else 1.0
+            if args.global_covar_offset < 1e-8:
+                scalarizer = (lambda c: np.linalg.slogdet(c)) if not is_scalar else (lambda c: _strace(c))
+            else:
+                def scalarizer(c):
+                    if is_scalar: return _strace(c)
+                    L = np.linalg.slogdet(c) 
+                    return L[0], L[1] + np.log1p(np.exp(-L[1]))
             sign, patchwise_covar_logdet = scalarizer(global_cov) 
             #patchwise_covar_logdet = np.log( np.linalg.det(global_cov) + 1.0 )
             if global_cov_aff_trans: patchwise_covar_logdet = _oneparam_affine(patchwise_covar_logdet, global_cov_affine_prm)
@@ -617,12 +628,15 @@ def compute_complexities(impath,    # Path to input image file
         def pairwise_wasserstein_distance(img, use_sinkhorn, sinkhorn_gamma, coordinate_aware, 
                 metric, image_rescaling_factor, coordinate_scale, emd_visualize):
             assert metric in ['euclidean', 'sqeuclidean'], "Underlying metric must be 'euclidean' or 'sqeuclidean'"
+            if not use_sinkhorn:
+                print('WARNING: not using efficient Sinkhorn implementation (--sinkhorn_emd)')
             if verbose: print('\tImage dims', img.shape)
             # Resize image
-            img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, multichannel=True)
+            img = skimage.transform.rescale(img, scale=image_rescaling_factor, anti_aliasing=True, channel_axis=-1)
             if verbose: print('\tDownscaled image dims:', img.shape)
             if (emd_visualize and is_color): imdisplay(img, 'Downscaled img')
             # Extract patches
+            if verbose: print(f'\tEMD window size / step: {emd_window_size} / {emd_window_step}')
             patches_emd, ps, wt = patches_over_channels(img, emd_window_size, emd_window_step, floatify=True)
             if verbose: print('\tPatches Shape', patches_emd.shape)
             # CASE 1: using alpha mask
@@ -689,12 +703,23 @@ def compute_complexities(impath,    # Path to input image file
                 a, b = ot.unif(wt), ot.unif(wt)
                 # Compute EMD
                 emd_final = solver(a,b,M)
-                if type(emd_final) is float: return emd_final
-                else: return emd_final[0]
+                if type(emd_final) is float: 
+                    return emd_final
+                elif emd_final.size == 1:
+                    return float(emd_final)
+                else: 
+                    return emd_final[0]
             # Compute EMDs
             if verbose: print('\tComputing pairwise EMDs')
-            emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, j == i+1) 
-                              for i in range(n) for j in range(i+1,n) ])
+            if not emd_random_subsample is None:
+                def get_rsubset(k):
+                    return random.sample( [ p for p in range(0,n) if not (p == k) ], 
+                                          emd_random_subsample)
+                emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, k==0)
+                                  for i in range(n) for (k,j) in enumerate(get_rsubset(i)) ])
+            else:
+                emds = np.array([ pair_emd(patch_lists[i], patch_lists[j], i, j == i+1) 
+                                  for i in range(n) for j in range(i+1,n) ])
             if verbose: 
                 _vss = ( len(emds), np.min(emds), np.max(emds), np.std(emds) )
                 print('\tNum/Min/Max/Stdev EMD values: %d/%.2f/%.2f/%.2f' % _vss)
@@ -821,7 +846,7 @@ def compute_complexities(impath,    # Path to input image file
 
     # Show images if needed
     if (( show_fourier_image or display_image or show_locent_image or show_loccov_image or show_gradient_img
-         or args.emd_visualize or show_pw_mnt_ptchs) and is_color):
+         or args.emd_visualize or show_pw_mnt_ptchs or show_dwt) and is_color):
         plt.show()
 
     ### Print (single image case) and return output ###
