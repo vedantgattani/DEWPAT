@@ -140,9 +140,9 @@ denoting $`\mathfrak{F}[c]`$ as the Fourier transform of the single-channel imag
 
 Estimates the mean local intra-patch covariance over the image, written
 ```math
-\mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\left( \det\left(\widehat{C}(p)\right) + 1 \right)
+\mathcal{C}_L(I) = \frac{1}{|P|} \sum_{p\in P} \log\left( \det\left(\widehat{C}(p)\right) + \gamma_p \right)
 ```
-Note that trace instead of determinant is used in the greyscale case.
+Note that trace instead of determinant is used in the greyscale case. By default, $`\gamma_p = 1`$, but can be set to zero via `--local_covar_no_shift_positive`.
 
 ### Average Gradient Magnitude
 
@@ -170,9 +170,9 @@ Estimates the differential entropy of the distribution of patches over the image
 
 Computes the log-determinant of the global covariance matrix over patches in the image, where again each multi-channel patch is unfolded into a single vector; i.e.,
 ```math
-\mathcal{C}_{G}(I) = \log\left( \det\left( \widehat{C}(P) \right) \right)
+\mathcal{C}_{G}(I) = \log\left( \det\left( \widehat{C}(P) \right) + \gamma_p \right)
 ```
-Note that trace instead of determinant is used in the greyscale case.
+Note that trace instead of determinant is used in the greyscale case. As in the local case, by default, $`\gamma_p = 1`$, but can be set to zero via `--global_covar_no_shift_positive`.
 
 ### Mean Pairwise Wasserstein Distance
 

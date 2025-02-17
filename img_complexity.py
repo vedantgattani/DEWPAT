@@ -117,6 +117,10 @@ group_p.add_argument('--local_cov_patch_size', type=int, default=20,
     help='Patch size for local covariance calculations')
 group_p.add_argument('--local_covar_wstep', type=int, default=5,
     help='The step-size (stride) for the local covariance calculation')
+group_p.add_argument('--local_covar_no_shift_positive', action='store_true',
+    help='No offset added before the log in the local covariance calculation')
+group_p.add_argument('--global_covar_no_shift_positive', action='store_true',
+    help='No offset added before the log in the global covariance calculation')
 group_p.add_argument('--sinkhorn_emd', action='store_true', 
     help='Specify to compute the entropy-regularized Sinkhorn approximation, rather than the exact EMD via linear programming')
 group_p.add_argument('--emd_ignore_coords', action='store_true',
@@ -295,7 +299,7 @@ def compute_complexities(impath,    # Path to input image file
         # UGLY FIX: NEED TO CLEAN UP
         if (type(impath) is list):
             impath = impath[0]
-    
+    # Number of channels in the input
     n_channels = img.shape[2]
 
     # Downscale image, if desired
@@ -496,8 +500,8 @@ def compute_complexities(impath,    # Path to input image file
                 #sys.exit(0)
                 covariance_mat_dets = [[ scalarize(np.cov( patches[:,i,j,:,:].reshape(n_channels, wt) ))
                                          for j in range(ps[2]) ] for i in range(ps[1]) ]
-            _num_corrector = 1.0
-            local_covar_img = np.log(np.array(covariance_mat_dets) + _num_corrector)
+            args.local_covar_offset = 0.0 if args.local_covar_no_shift_positive else 1.0
+            local_covar_img = np.log(np.array(covariance_mat_dets) + args.local_covar_offset + 1e-8)
             if (show_loccov_image and is_color):
                 h, w, c = img.shape
                 resized_local_covar_img = skimage.transform.resize(local_covar_img, output_shape=(h,w), order=3)
@@ -600,7 +604,14 @@ def compute_complexities(impath,    # Path to input image file
             def _strace(c):
                 t = np.trace(c)
                 return np.sign(t), t
-            scalarizer = (lambda c: np.linalg.slogdet(c)) if not is_scalar else (lambda c: _strace(c))
+            args.global_covar_offset = 0.0 if args.global_covar_no_shift_positive else 1.0
+            if args.global_covar_offset < 1e-8:
+                scalarizer = (lambda c: np.linalg.slogdet(c)) if not is_scalar else (lambda c: _strace(c))
+            else:
+                def scalarizer(c):
+                    if is_scalar: return _strace(c)
+                    L = np.linalg.slogdet(c) 
+                    return L[0], L[1] + np.log1p(np.exp(-L[1]))
             sign, patchwise_covar_logdet = scalarizer(global_cov) 
             #patchwise_covar_logdet = np.log( np.linalg.det(global_cov) + 1.0 )
             if global_cov_aff_trans: patchwise_covar_logdet = _oneparam_affine(patchwise_covar_logdet, global_cov_affine_prm)
