@@ -4,11 +4,6 @@ oth/
 # Logs
 *.log
 
-# Images
-*.png
-*.jpg
-*.jpeg
-*.gif
 
 # Pytorch models
 *.pt
