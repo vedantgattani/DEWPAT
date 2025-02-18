@@ -77,11 +77,11 @@ $`I_G= \lVert \nabla I \rVert_2`$ of that input (or both). Use `--use_grad_only`
 
 #### Examples
 
-- Compute all the complexity measures for a single input image and output the data to a .csv file:
+- Compute all the default complexity measures for a single input image and output the data to a .csv file:
 
   `python img_complexity.py eg.png > output.csv`
 
-- Compute all the complexity measures for all images in a folder and output the data to a .csv file:
+- Compute all the default complexity measures for all images in a folder and output the data to a .csv file:
 
   `python img_complexity.py folder > output.csv`
 
