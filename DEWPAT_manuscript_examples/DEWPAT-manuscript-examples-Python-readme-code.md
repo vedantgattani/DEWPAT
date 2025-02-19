@@ -41,7 +41,7 @@ python seg.py --no_print_transitions anole_dewlaps --labeller kmeans  --write_me
 ### Example 3
 #### Use img_complexity.py in master branch. remember to pass --mspec for mspec images
 
-sRGB images of flower petals are in folder flower_ex_vis_flowers and mspec images of flower petals are in folder flower_ex_bee_flower. use the following code to calculate global patch covariance on the images and save the results.
+sRGB images of flower petals are in folder flower_ex_vis_flowers and mspec images of flower petals are in folder flower_ex_bee_flower. make sure to move the image folders to the main folder. use the following code to calculate global patch covariance on the images and save the results.
 
 python img_complexity.py flower_ex_vis_flowers --global_patch_covar >flower_vis_complexity.csv
 
