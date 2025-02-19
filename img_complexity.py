@@ -29,6 +29,10 @@ parser.add_argument('--timing', dest='timing', action='store_true',
         help='Whether to measure and print timing on each function')
 parser.add_argument('--mspec', dest='is_mspec', action='store_true',
     help='Whether to treat the input as a multispectral image')
+parser.add_argument('--mspec_multiplier', type=float, default=255.0,
+    help='Multiplies loaded mspec images pixel values.' 
+         'By default, uses the 8-bit maximum, to emulate values on standard images.' 
+         'Set to 1 to turn off.')
 # Preprocessing (resize, blur, greyscale, etc...)
 parser.add_argument('--blur', type=float, default=0.0,
     help='Specify Gaussian blur standard deviation applied to the image')
@@ -36,6 +40,7 @@ parser.add_argument('--greyscale', type=str, default="none",
     help='Specify greyscale conversion: one of "human", "avg", or "none".')
 parser.add_argument('--resize', type=float, default=1.0,
     help='Specify scalar resizing value. E.g., 0.5 halves the image size; 2 doubles it.')
+
 # Specifying complexity measures to use
 group_c = parser.add_argument_group('Complexities Arguments',
         description=('Controls which complexity measures to utilize. ' + 
@@ -296,6 +301,8 @@ def compute_complexities(impath,    # Path to input image file
         img,img_mask = load_color_image(impath)
     else:
         img,img_mask = load_mspec_image(impath, verbose)
+        assert args.mspec_multiplier > 0.0, "mspec_multiplier is meant to be positive"
+        img = img * args.mspec_multiplier
         # UGLY FIX: NEED TO CLEAN UP
         if (type(impath) is list):
             impath = impath[0]
@@ -611,9 +618,8 @@ def compute_complexities(impath,    # Path to input image file
                 def scalarizer(c):
                     if is_scalar: return _strace(c)
                     L = np.linalg.slogdet(c) 
-                    return L[0], L[1] + np.log1p(np.exp(-L[1]))
+                    return L[0], L[1] + np.logaddexp(0.0, -L[1])
             sign, patchwise_covar_logdet = scalarizer(global_cov) 
-            #patchwise_covar_logdet = np.log( np.linalg.det(global_cov) + 1.0 )
             if global_cov_aff_trans: patchwise_covar_logdet = _oneparam_affine(patchwise_covar_logdet, global_cov_affine_prm)
             return patchwise_covar_logdet
         add_new(patchwise_global_covar(img), 7)
