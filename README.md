@@ -25,6 +25,10 @@ Create environment: `conda env create -f env.yaml`.
 Activate environment: `source activate imcom` or `conda activate imcom`.
 (On Windows, just `activate imcom`).
 
+You should now be able to run the commands in the main folder.
+
+We also include a more comprehensive example of a working conda environment in `misc/environment-example.yml`, to consult for exact versions if needed.
+
 # General usage
 
 The general usage is as follows: `python <script_name.py> <file.extension or input folder> --usage_specific_argument <output.csv>`
