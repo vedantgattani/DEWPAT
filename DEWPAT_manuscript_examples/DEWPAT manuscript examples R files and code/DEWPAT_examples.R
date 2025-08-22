@@ -1,6 +1,6 @@
 ### CODE TO COMPLETE DEWPAT EXAMPLES 
 
-setwd("")
+setwd("/Users/jill/Documents/Grad School/Mahler Lab/Data/GitHub/DEWPAT/DEWPAT_manuscript_examples/DEWPAT manuscript examples R files and code")
 
 
 
@@ -123,10 +123,10 @@ flower + theme
 
 
 lm <- lm(GPC_stnd ~ species, data=flower_dat_bee)
-summary(lm) # p = 0.0316, adjusted R squared = 0.1566
+summary(lm) # p = 0.0362, adjusted R squared = 0.1474, estimate 0.18490
 
 anova_result <- aov(GPC_stnd ~ species, data = flower_dat_bee)
-summary(anova_result) # F-statistic = 186.2, p < 0.001
+summary(anova_result) # F-statistic = 4.976, p = 0.0362
 
 # Vis only
 flower_dat_vis <- read.csv("flowers_vis.csv", header = TRUE,na.strings = c("", "NA"))
@@ -143,10 +143,10 @@ flower <- ggplot(flower_dat_vis, aes(x=species, y=GPC_stnd)) +
 flower + theme
 
 lm <- lm(GPC_stnd ~ species, data=flower_dat_vis)
-summary(lm) # p = 3.24e-12, adjusted R squared = 0.8895
+summary(lm) # p = 3.15e-13, adjusted R squared = 0.9105
 
 anova_result <- aov(GPC_stnd ~ species, data = flower_dat_vis)
-summary(anova_result) # F-statistic = 186.2, p < 0.001
+summary(anova_result) # F-statistic = 235.1, p < 0.001
 
 
 
