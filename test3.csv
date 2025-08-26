@@ -1,0 +1,17 @@
+gemmosus.png
+	Pixelwise Shannon Entropy: 4.1470e+00
+	Average Local Entropies: 5.0352e+00
+	Frequency-weighted Mean Coefficient: 6.7810e+00
+	Local Patch Covariance: 1.1434e+01
+	Average Gradient Magnitude: 2.5691e-02
+	Pixelwise Differential Entropy: -3.2646e+01
+	Patchwise Differential Entropy: -5.4260e+01
+	Global Patch Covariance: 9.1948e+02
+	Pairwise Mean Distances: 1.0523e-01
+	Pairwise Moment Distances: 1.3730e-01
+	Wavelet Detail Coef: 1.8025e-02
+	PWG Jeffreys Divergence: 2.0544e+01
+	PWG Wass2 Divergence: 1.9859e-01
+	PWG Hellinger Divergence: 6.8652e-01
+	PWG Bhattacharyya Divergence: -1.7819e+00
+	PWG FM-ATF Divergence: 5.1517e+00
